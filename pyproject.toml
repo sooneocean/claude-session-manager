@@ -15,6 +15,9 @@ dev = [
 monitor = [
     "psutil>=5.9",
 ]
+web = [
+    "textual-serve>=1.0",
+]
 
 [project.scripts]
 csm = "csm.app:main"

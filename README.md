@@ -62,7 +62,20 @@ python -m csm    # or: csm
 | `R` | Restart selected session |
 | `/` | Cycle filter (All / RUN / WAIT / DEAD / DONE) |
 | `S` | Cycle sort (None / Cost / Status / Stage) |
+| `B` | Broadcast command to all WAIT sessions |
+| `H` | Help screen |
 | `Q` | Quit (saves sessions) |
+
+### Web Mode
+
+Access CSM from a browser — no extra code needed:
+
+```bash
+pip install textual-serve
+textual serve "python -m csm"
+```
+
+Opens a web dashboard at `http://localhost:8566`. Useful for remote access or when you prefer a browser UI.
 
 ### Dashboard Layout
 
