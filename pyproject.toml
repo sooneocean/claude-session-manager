@@ -1,0 +1,31 @@
+[project]
+name = "csm"
+version = "0.1.0"
+description = "Claude Session Manager - TUI tool for managing multiple Claude Code sessions"
+requires-python = ">=3.10"
+dependencies = [
+    "textual>=0.80,<1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+]
+monitor = [
+    "psutil>=5.9",
+]
+
+[project.scripts]
+csm = "csm.app:main"
+
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

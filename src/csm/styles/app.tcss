@@ -1,0 +1,26 @@
+Screen {
+    layout: vertical;
+}
+
+Horizontal {
+    height: 1fr;
+}
+
+#session_list {
+    width: 60%;
+    height: 100%;
+}
+
+#detail_panel {
+    width: 40%;
+    height: 100%;
+    border-left: solid $primary;
+}
+
+#status_bar {
+    dock: bottom;
+    height: 1;
+    background: $accent;
+    color: $text;
+    padding: 0 1;
+}

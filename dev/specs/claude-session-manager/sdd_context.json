@@ -1,0 +1,273 @@
+{
+  "version": "3.0.0",
+  "feature": "claude-session-manager",
+  "spec_folder": "dev/specs/claude-session-manager",
+  "spec_mode": "full",
+  "work_type": "new_feature",
+  "execution_mode": "autopilot",
+  "status": "in_progress",
+  "current_stage": "s5",
+  "last_updated": "2026-03-15T04:00:00Z",
+  "last_updated_by": "orchestrator",
+  "stages": {
+    "s0": {
+      "status": "completed",
+      "completed_at": "2026-03-15T00:05:00Z",
+      "agent": "requirement-analyst",
+      "started_at": "2026-03-15T00:00:00Z",
+      "output": {
+        "brief_spec_path": "dev/specs/claude-session-manager/s0_brief_spec.md",
+        "work_type": "new_feature",
+        "requirement": "開發一個 Python TUI 工具，用來批量啟動、監控和操控 10+ 個 Claude Code terminal session",
+        "pain_points": [
+          "視窗切換地獄 - 10+ session 需不斷 alt-tab",
+          "狀態不可見 - 不知道哪些在等回覆",
+          "成本失控 - token 用量分散無法統一監控",
+          "操作效率低 - 需手動切視窗操作"
+        ],
+        "goal": "一個畫面看完所有 session 狀態，直接操作，不用切視窗",
+        "success_criteria": [
+          "能從 TUI 啟動/停止/重啟 Claude Code session",
+          "Dashboard 正確顯示 SOP 階段、狀態、成本",
+          "列表刷新 ≤1 秒無卡頓",
+          "能從 dashboard 送指令到 session",
+          "正確解析 SOP 階段和 token 用量",
+          "Session crash 自動偵測"
+        ],
+        "scope_in": [
+          "Session lifecycle 管理",
+          "TUI Dashboard 監控面板",
+          "Command dispatch 指令派送",
+          "Output parser 輸出解析"
+        ],
+        "scope_out": [
+          "Web dashboard",
+          "Claude API 直接查詢",
+          "完整日誌儲存",
+          "多用戶協作",
+          "跨機器遠端管理"
+        ],
+        "constraints": [
+          "依賴 claude CLI 在 PATH",
+          "Windows PTY 支援有限",
+          "Token 解析依賴輸出格式",
+          "Python 3.10+"
+        ],
+        "functional_areas": [
+          {"id": "FA-A", "name": "Session Lifecycle", "description": "啟動、停止、重啟 Claude Code session", "independence": "high"},
+          {"id": "FA-B", "name": "Monitoring Dashboard", "description": "即時顯示所有 session 狀態", "independence": "high"},
+          {"id": "FA-C", "name": "Command Dispatch", "description": "從 dashboard 發送指令到 session", "independence": "medium"},
+          {"id": "FA-D", "name": "Output Parser", "description": "解析 Claude Code 輸出提取結構化資訊", "independence": "low"}
+        ],
+        "decomposition_strategy": "single_sop_fa_labeled",
+        "child_sops": []
+      }
+    },
+    "s1": {
+      "status": "completed",
+      "agents": ["codebase-explorer", "architect"],
+      "started_at": "2026-03-15T00:10:00Z",
+      "completed_at": "2026-03-15T01:00:00Z",
+      "output": {
+        "completed_phases": [1, 2, 3],
+        "dev_spec_path": "dev/specs/claude-session-manager/s1_dev_spec.md",
+        "impact_scope": {
+          "frontend": [
+            "src/csm/app.py",
+            "src/csm/widgets/session_list.py",
+            "src/csm/widgets/detail_panel.py",
+            "src/csm/widgets/modals.py"
+          ],
+          "backend": [
+            "src/csm/__init__.py",
+            "src/csm/core/session_manager.py",
+            "src/csm/core/output_parser.py",
+            "src/csm/core/command_dispatcher.py",
+            "src/csm/models/session.py",
+            "src/csm/models/cost.py",
+            "src/csm/utils/ansi.py",
+            "src/csm/utils/ring_buffer.py"
+          ],
+          "database": []
+        },
+        "tasks": [
+          {"id": "T0", "name": "專案腳手架", "fa": "全域", "type": "基礎建設", "complexity": "S", "agent": "python-expert", "depends_on": []},
+          {"id": "T1", "name": "Wave 0: Claude CLI PIPE 模式驗證", "fa": "FA-D", "type": "探索驗證", "complexity": "M", "agent": "python-expert", "depends_on": ["T0"]},
+          {"id": "T2", "name": "RingBuffer 實作", "fa": "FA-D", "type": "工具庫", "complexity": "S", "agent": "python-expert", "depends_on": ["T0"]},
+          {"id": "T3", "name": "ANSI escape 清除工具", "fa": "FA-D", "type": "工具庫", "complexity": "S", "agent": "python-expert", "depends_on": ["T0"]},
+          {"id": "T4", "name": "Session 資料模型", "fa": "FA-A", "type": "資料層", "complexity": "S", "agent": "python-expert", "depends_on": ["T0"]},
+          {"id": "T5", "name": "Cost 追蹤模型", "fa": "FA-B", "type": "資料層", "complexity": "S", "agent": "python-expert", "depends_on": ["T4"]},
+          {"id": "T6", "name": "OutputParser 實作", "fa": "FA-D", "type": "核心邏輯", "complexity": "L", "agent": "python-expert", "depends_on": ["T1", "T2", "T3"]},
+          {"id": "T7", "name": "SessionManager 實作", "fa": "FA-A", "type": "核心邏輯", "complexity": "L", "agent": "python-expert", "depends_on": ["T4", "T6"]},
+          {"id": "T8", "name": "CommandDispatcher 實作", "fa": "FA-C", "type": "核心邏輯", "complexity": "M", "agent": "python-expert", "depends_on": ["T7"]},
+          {"id": "T9", "name": "Session 列表 Widget", "fa": "FA-B", "type": "TUI", "complexity": "M", "agent": "python-expert", "depends_on": ["T4"]},
+          {"id": "T10", "name": "詳情面板 Widget", "fa": "FA-B", "type": "TUI", "complexity": "M", "agent": "python-expert", "depends_on": ["T2"]},
+          {"id": "T11", "name": "Modal 對話框", "fa": "FA-B/A/C", "type": "TUI", "complexity": "M", "agent": "python-expert", "depends_on": ["T9"]},
+          {"id": "T12", "name": "Textual App 主入口", "fa": "FA-B", "type": "TUI", "complexity": "L", "agent": "python-expert", "depends_on": ["T7", "T8", "T9", "T10", "T11"]},
+          {"id": "T13", "name": "整合測試", "fa": "全域", "type": "測試", "complexity": "M", "agent": "python-expert", "depends_on": ["T12"]}
+        ],
+        "acceptance_criteria": [
+          "AC-1: 啟動新 session (P0)",
+          "AC-2: 停止 session (P0)",
+          "AC-3: 重啟 session (P0)",
+          "AC-4: Dashboard 狀態顯示 (P0)",
+          "AC-5: 發送指令 (P0)",
+          "AC-6: SOP 階段解析 (P1)",
+          "AC-7: Token 成本追蹤 (P1)",
+          "AC-8: Crash 偵測 (P0)",
+          "AC-9: 篩選排序 (P2)",
+          "AC-10: Resume session (P1)"
+        ],
+        "assumptions": [
+          "claude CLI 在 PIPE 模式下可正常啟動並輸出（需 Wave 0 驗證）",
+          "Textual 在 Windows Terminal 環境下渲染正常",
+          "claude CLI 的輸出包含可解析的 SOP 階段和 token 資訊"
+        ],
+        "solution_summary": "Python TUI (Textual) + asyncio subprocess 管理 + 正則/狀態機輸出解析。14 個任務，Wave 0 驗證 claude CLI PIPE 行為後才開始 OutputParser 實作。",
+        "tech_debt": [
+          "OutputParser 解析規則需在 Wave 0 後根據真實輸出更新",
+          "Token 成本計算依賴 claude CLI 輸出格式，格式變動需更新 parser",
+          "系統資源監控（E6）降級為 session 數量警告（psutil 為可選依賴）"
+        ],
+        "regression_risks": [],
+        "risks": [
+          {"type": "Windows asyncio subprocess 限制", "level": "High"},
+          {"type": "Claude CLI 輸出格式未知", "level": "High"},
+          {"type": "Textual 在 Windows 終端的相容性", "level": "Medium"},
+          {"type": "多 Session 同時讀取 stdout 的事件迴圈壓力", "level": "Medium"},
+          {"type": "stdin 寫入競爭與 BrokenPipeError", "level": "Medium"},
+          {"type": "pyproject.toml / 套件管理方式未定", "level": "Low"}
+        ],
+        "unknowns": [
+          "claude CLI 在 PIPE 模式（非 PTY）下的實際輸出格式",
+          "claude CLI 的 token 用量輸出格式的具體 regex pattern",
+          "claude CLI 的 waiting for input 狀態偵測方式",
+          "Python/Textual 版本具體需求"
+        ],
+        "dependencies": {
+          "upstream": ["claude CLI", "Python 3.10+", "Textual >= 0.80"],
+          "downstream": []
+        }
+      }
+    },
+    "s2": {
+      "status": "completed",
+      "agents": ["reviewer"],
+      "started_at": "2026-03-15T01:30:00Z",
+      "completed_at": "2026-03-15T02:00:00Z",
+      "output": {
+        "review_result": "PASS_WITH_FIXES",
+        "findings_summary": "P0=2(已修正), P1=6(已修正), P2=3(記錄tech_debt)",
+        "fixes_applied": [
+          "SR-P0-001: T1 加 GO/NO-GO 決策閘門和 contingency spec",
+          "SR-P0-002: RingBuffer 移出 SessionState，改由 OutputBufferStore 管理",
+          "SR-P1-001: T12 加篩選排序功能",
+          "SR-P1-002: Queue bounded(50) + restart 清空",
+          "SR-P1-003: T4/T5 補充單元測試場景",
+          "SR-P1-004: T7 加 mock subprocess 自動化測試",
+          "SR-P1-005: User Flow 加 RUN 狀態警告分支",
+          "SR-P1-006: T12 定義 SESSION_LIMIT=20 + E6 實作"
+        ]
+      }
+    },
+    "s3": {
+      "status": "completed",
+      "agent": "architect",
+      "started_at": "2026-03-15T02:10:00Z",
+      "completed_at": "2026-03-15T02:30:00Z",
+      "output": {
+        "implementation_plan_path": "dev/specs/claude-session-manager/s3_implementation_plan.md",
+        "waves": [
+          {
+            "wave": 0,
+            "name": "腳手架 + CLI PIPE 驗證",
+            "tasks": [
+              {"id": "T0", "name": "專案腳手架", "agent": "python-expert", "dependencies": [], "complexity": "S", "parallel": false, "tdd_plan": null, "skip_justification": "純腳手架/設定檔，無可測邏輯"},
+              {"id": "T1", "name": "Wave 0: Claude CLI PIPE 模式驗證", "agent": "python-expert", "dependencies": ["T0"], "complexity": "M", "parallel": false, "tdd_plan": null, "skip_justification": "探索驗證任務，產出為調查報告"}
+            ]
+          },
+          {
+            "wave": 1,
+            "name": "基礎元件",
+            "tasks": [
+              {"id": "T2", "name": "RingBuffer", "agent": "python-expert", "dependencies": ["T0"], "complexity": "S", "parallel": true, "tdd_plan": {"test_file": "tests/test_ring_buffer.py", "test_cases": ["test_append_within_capacity", "test_append_exceeds_capacity", "test_get_lines_all", "test_get_lines_limited", "test_empty_buffer", "test_clear", "test_len", "test_default_capacity"], "test_command": "python -m pytest tests/test_ring_buffer.py -v"}},
+              {"id": "T3", "name": "ANSI escape 清除", "agent": "python-expert", "dependencies": ["T0"], "complexity": "S", "parallel": true, "tdd_plan": {"test_file": "tests/test_ansi.py", "test_cases": ["test_strip_sgr_color", "test_strip_sgr_reset", "test_strip_csi_cursor", "test_strip_osc", "test_cr_overwrite", "test_cr_partial_overwrite", "test_plain_text_unchanged", "test_mixed_ansi_and_text"], "test_command": "python -m pytest tests/test_ansi.py -v"}},
+              {"id": "T4", "name": "Session 資料模型", "agent": "python-expert", "dependencies": ["T0"], "complexity": "S", "parallel": true, "tdd_plan": {"test_file": "tests/test_session_model.py", "test_cases": ["test_session_status_enum_values", "test_session_config_defaults", "test_session_state_create", "test_session_state_create_with_resume", "test_session_state_fields_typed"], "test_command": "python -m pytest tests/test_session_model.py -v"}}
+            ]
+          },
+          {
+            "wave": 2,
+            "name": "資料層 + 核心解析",
+            "tasks": [
+              {"id": "T5", "name": "Cost 追蹤模型", "agent": "python-expert", "dependencies": ["T4"], "complexity": "S", "parallel": true, "tdd_plan": {"test_file": "tests/test_cost_model.py", "test_cases": ["test_empty_aggregator_returns_zero", "test_single_session_update", "test_multiple_sessions_accumulate", "test_remove_session_deducts_cost", "test_update_same_session_replaces"], "test_command": "python -m pytest tests/test_cost_model.py -v"}},
+              {"id": "T6", "name": "OutputParser", "agent": "python-expert", "dependencies": ["T1", "T2", "T3"], "complexity": "L", "parallel": true, "tdd_plan": {"test_file": "tests/test_output_parser.py", "test_cases": ["test_parse_sop_stage_s0", "test_parse_sop_stage_s4", "test_parse_token_usage", "test_parse_plain_text", "test_strip_ansi_before_parse", "test_state_machine_transition", "test_parse_empty_line"], "test_command": "python -m pytest tests/test_output_parser.py -v"}}
+            ]
+          },
+          {
+            "wave": 3,
+            "name": "核心邏輯 + TUI 元件",
+            "tasks": [
+              {"id": "T7", "name": "SessionManager", "agent": "python-expert", "dependencies": ["T4", "T6"], "complexity": "L", "parallel": true, "tdd_plan": {"test_file": "tests/test_session_manager.py", "test_cases": ["test_spawn_success", "test_spawn_directory_not_found", "test_spawn_duplicate_session", "test_stop_graceful", "test_stop_timeout_force_kill", "test_restart_preserves_config", "test_crash_detection_marks_dead", "test_special_char_path", "test_get_sessions"], "test_command": "python -m pytest tests/test_session_manager.py -v"}},
+              {"id": "T9", "name": "Session 列表 Widget", "agent": "python-expert", "dependencies": ["T4"], "complexity": "M", "parallel": true, "tdd_plan": {"test_file": "tests/test_session_list.py", "test_cases": ["test_render_empty_list", "test_render_sessions", "test_add_session_row", "test_remove_session_row", "test_selection_change_event"], "test_command": "python -m pytest tests/test_session_list.py -v"}},
+              {"id": "T10", "name": "詳情面板 Widget", "agent": "python-expert", "dependencies": ["T2"], "complexity": "M", "parallel": true, "tdd_plan": {"test_file": "tests/test_detail_panel.py", "test_cases": ["test_empty_state_shows_placeholder", "test_display_buffer_content", "test_switch_session_updates_content", "test_auto_scroll_to_bottom"], "test_command": "python -m pytest tests/test_detail_panel.py -v"}},
+              {"id": "T8", "name": "CommandDispatcher", "agent": "python-expert", "dependencies": ["T7"], "complexity": "M", "parallel": false, "tdd_plan": {"test_file": "tests/test_command_dispatcher.py", "test_cases": ["test_enqueue_success", "test_enqueue_queue_full", "test_consumer_writes_stdin", "test_broken_pipe_marks_dead", "test_cleanup_on_stop", "test_fifo_order"], "test_command": "python -m pytest tests/test_command_dispatcher.py -v"}}
+            ]
+          },
+          {
+            "wave": 4,
+            "name": "TUI 組裝",
+            "tasks": [
+              {"id": "T11", "name": "Modal 對話框", "agent": "python-expert", "dependencies": ["T9"], "complexity": "M", "parallel": false, "tdd_plan": {"test_file": "tests/test_modals.py", "test_cases": ["test_new_session_modal_opens", "test_new_session_modal_returns_config", "test_confirm_stop_modal_confirm", "test_confirm_stop_modal_cancel", "test_command_input_modal_returns_text", "test_escape_closes_modal"], "test_command": "python -m pytest tests/test_modals.py -v"}},
+              {"id": "T12", "name": "App 主入口 + 佈局", "agent": "python-expert", "dependencies": ["T7", "T8", "T9", "T10", "T11"], "complexity": "L", "parallel": false, "tdd_plan": {"test_file": "tests/test_app.py", "test_cases": ["test_app_starts", "test_layout_has_three_sections", "test_key_n_opens_new_session_modal", "test_key_q_triggers_quit", "test_key_x_opens_confirm_stop", "test_status_bar_shows_total_cost", "test_enter_on_wait_session", "test_enter_on_dead_session"], "test_command": "python -m pytest tests/test_app.py -v"}}
+            ]
+          },
+          {
+            "wave": 5,
+            "name": "驗收",
+            "tasks": [
+              {"id": "T13", "name": "整合測試 + 手動測試計畫", "agent": "python-expert", "dependencies": ["T12"], "complexity": "M", "parallel": false, "tdd_plan": {"test_file": "tests/test_integration.py", "test_cases": ["test_full_lifecycle_spawn_and_stop", "test_send_command_to_session", "test_crash_detection_flow", "test_multiple_sessions", "test_keyboard_navigation"], "test_command": "python -m pytest tests/test_integration.py -v"}}
+            ]
+          }
+        ],
+        "total_tasks": 14,
+        "estimated_waves": 6,
+        "verification": {
+          "static_analysis": ["python -m mypy src/csm/ --ignore-missing-imports"],
+          "unit_tests": ["python -m pytest tests/ -v"]
+        }
+      }
+    },
+    "s4": {
+      "status": "completed",
+      "agent": "orchestrator",
+      "started_at": "2026-03-15T02:30:00Z",
+      "completed_at": "2026-03-15T04:00:00Z",
+      "output": {
+        "completed_tasks": ["T0","T1","T2","T3","T4","T5","T6","T7","T8","T9","T10","T11","T12","T13"],
+        "build_status": "pass",
+        "test_summary": "127 passed, 0 failed",
+        "architecture_change": "Wave 0 GO with modification: interactive subprocess replaced by --print --resume --output-format stream-json mode",
+        "changes": [
+          "pyproject.toml",
+          ".gitignore",
+          "src/csm/__init__.py",
+          "src/csm/__main__.py",
+          "src/csm/app.py",
+          "src/csm/styles/app.tcss",
+          "src/csm/core/session_manager.py",
+          "src/csm/core/output_parser.py",
+          "src/csm/core/command_dispatcher.py",
+          "src/csm/models/session.py",
+          "src/csm/models/cost.py",
+          "src/csm/utils/ring_buffer.py",
+          "src/csm/utils/ansi.py",
+          "src/csm/widgets/session_list.py",
+          "src/csm/widgets/detail_panel.py",
+          "src/csm/widgets/modals.py",
+          "scripts/cli_pipe_test.py",
+          "docs/wave0_cli_findings.md"
+        ]
+      }
+    }
+  }
+}
