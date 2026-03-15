@@ -1,0 +1,5 @@
+{"timestamp":"2026-03-15T16:36:48+08:00","type":"converge","scope":"spec","round":"1","engine":"fallback","exit_code":2,"p0":0,"p1":5,"p2":3,"session":"converge-r1"}
+{"timestamp":"2026-03-15T16:44:31+08:00","type":"converge","scope":"spec","round":"2","engine":"fallback","exit_code":0,"p0":0,"p1":2,"p2":0,"session":"review-r2"}
+{"timestamp":"2026-03-15T16:48:41+08:00","type":"converge","scope":"spec","round":"3","engine":"fallback","exit_code":1,"p0":0,"p1":3,"p2":1,"session":"r3-fallback"}
+{"timestamp":"2026-03-15T16:52:03+08:00","type":"converge","scope":"spec","round":"4","engine":"fallback","exit_code":2,"p0":0,"p1":1,"p2":1,"session":"r4"}
+{"timestamp":"2026-03-15T16:54:38+08:00","type":"converge","scope":"spec","round":"5","engine":"fallback","exit_code":0,"p0":0,"p1":0,"p2":0,"decision":"APPROVED","session":"claude-session-manager"}

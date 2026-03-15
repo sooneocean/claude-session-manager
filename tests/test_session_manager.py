@@ -29,9 +29,16 @@ MOCK_RESULT_JSON = (
 
 
 def make_mock_process(stdout_lines, returncode=0):
+    """Create a mock process that supports streaming readline().
+
+    stdout.readline() returns each line as bytes (with newline), then b"" for EOF.
+    """
     proc = AsyncMock()
-    stdout_bytes = "\n".join(stdout_lines).encode()
-    proc.communicate = AsyncMock(return_value=(stdout_bytes, b""))
+    # Build line-by-line byte responses for readline()
+    lines_bytes = [line.encode() + b"\n" for line in stdout_lines] + [b""]
+    readline_iter = iter(lines_bytes)
+    proc.stdout = MagicMock()
+    proc.stdout.readline = AsyncMock(side_effect=lambda: next(readline_iter))
     proc.returncode = returncode
     proc.wait = AsyncMock()
     proc.terminate = MagicMock()

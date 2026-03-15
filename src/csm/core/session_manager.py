@@ -231,7 +231,8 @@ class SessionManager:
 
         Returns the result text on success, None on non-zero exit.
         """
-        cmd = ["claude", "-p", "--output-format", "stream-json", "--verbose"]
+        cmd = ["claude", "-p", "--output-format", "stream-json", "--verbose",
+               "--include-partial-messages"]
 
         # Prefer the runtime session id obtained from a previous call; fall
         # back to the config-level resume_id for the very first call.
@@ -257,65 +258,71 @@ class SessionManager:
         )
         self._running_processes[state.session_id] = proc
 
+        # Stream stdout line-by-line for real-time updates
+        result_text: str | None = None
+        buf = self._buffer_store.get(state.session_id)
+
         try:
-            stdout, _stderr = await asyncio.wait_for(
-                proc.communicate(), timeout=600
-            )
-        except asyncio.TimeoutError:
-            proc.kill()
-            await proc.wait()
-            state.status = SessionStatus.DEAD
-            return None
+            while True:
+                try:
+                    raw_line = await asyncio.wait_for(
+                        proc.stdout.readline(), timeout=600
+                    )
+                except asyncio.TimeoutError:
+                    proc.kill()
+                    await proc.wait()
+                    state.status = SessionStatus.DEAD
+                    return None
+
+                if not raw_line:  # EOF — process finished
+                    break
+
+                line = raw_line.decode("utf-8", errors="replace").rstrip("\n")
+                event = self._parser.parse_line(line)
+                if not event:
+                    continue
+
+                state.last_activity = datetime.now()
+
+                # Capture the CLI session_id on first occurrence.
+                if event.session_id and not state.claude_session_id:
+                    state.claude_session_id = event.session_id
+
+                if isinstance(event, ResultEvent):
+                    result_text = event.result_text or ""
+                    if event.cost_usd is not None:
+                        state.cost_usd = event.cost_usd
+                    if event.tokens_in is not None:
+                        state.tokens_in += event.tokens_in
+                    if event.tokens_out is not None:
+                        state.tokens_out += event.tokens_out
+                    self._cost_aggregator.update(
+                        state.session_id,
+                        state.tokens_in,
+                        state.tokens_out,
+                        state.cost_usd,
+                    )
+                    if buf is not None and result_text:
+                        for rl in result_text.split("\n"):
+                            buf.append(rl)
+
+                elif isinstance(event, AssistantEvent) and event.content_text and buf is not None:
+                    for rl in event.content_text.split("\n"):
+                        buf.append(rl)
+
+                if event.sop_stage:
+                    state.sop_stage = event.sop_stage
+
         finally:
             self._running_processes.pop(state.session_id, None)
 
-        state.last_activity = datetime.now()
+        # Wait for process to fully exit
+        await proc.wait()
         state.exit_code = proc.returncode
+        state.last_result = result_text or ""
 
         if proc.returncode != 0:
             state.status = SessionStatus.DEAD
             return None
 
-        return self._process_output(state, stdout.decode("utf-8", errors="replace"))
-
-    def _process_output(self, state: SessionState, raw: str) -> str | None:
-        """Parse stream-JSON lines and update state.  Returns last result text."""
-        result_text: str | None = None
-        buf = self._buffer_store.get(state.session_id)
-
-        for line in raw.split("\n"):
-            event = self._parser.parse_line(line)
-            if not event:
-                continue
-
-            # Capture the CLI session_id on first occurrence.
-            if event.session_id and not state.claude_session_id:
-                state.claude_session_id = event.session_id
-
-            if isinstance(event, ResultEvent):
-                result_text = event.result_text or ""
-                if event.cost_usd is not None:
-                    state.cost_usd = event.cost_usd
-                if event.tokens_in is not None:
-                    state.tokens_in += event.tokens_in
-                if event.tokens_out is not None:
-                    state.tokens_out += event.tokens_out
-                self._cost_aggregator.update(
-                    state.session_id,
-                    state.tokens_in,
-                    state.tokens_out,
-                    state.cost_usd,
-                )
-                if buf is not None and result_text:
-                    for rl in result_text.split("\n"):
-                        buf.append(rl)
-
-            elif isinstance(event, AssistantEvent) and event.content_text and buf is not None:
-                for rl in event.content_text.split("\n"):
-                    buf.append(rl)
-
-            if event.sop_stage:
-                state.sop_stage = event.sop_stage
-
-        state.last_result = result_text or ""
         return result_text

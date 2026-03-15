@@ -71,7 +71,7 @@ class CSMApp(App):
             self.notify(f"Restored {len(saved)} sessions")
 
     def _refresh_display(self) -> None:
-        """Refresh the session list and status bar."""
+        """Refresh the session list, status bar, and detail panel (incremental)."""
         sessions = self._session_manager.get_sessions()
         self.query_one("#session_list", SessionList).update_sessions(sessions)
 
@@ -84,6 +84,13 @@ class CSMApp(App):
         self.query_one("#status_bar", Static).update(
             f"Total: ${total.total_cost_usd:.2f} | Sessions: {active}/{len(sessions)}"
         )
+
+        # Incrementally update detail panel with new output lines
+        if self._selected_session_id:
+            panel = self.query_one("#detail_panel", DetailPanel)
+            buf = self._session_manager.buffer_store.get(self._selected_session_id)
+            if buf is not None:
+                panel.refresh_from_buffer(self._selected_session_id, buf.get_lines())
 
     def action_new_session(self) -> None:
         self._do_new_session()
@@ -188,6 +195,7 @@ class CSMApp(App):
         self._selected_session_id = event.session_id
         panel = self.query_one("#detail_panel", DetailPanel)
         if event.session_id:
+            panel.track_session(event.session_id)
             buf = self._session_manager.buffer_store.get(event.session_id)
             if buf is not None:
                 panel.show_output(buf.get_lines(100))

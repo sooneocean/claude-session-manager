@@ -24,8 +24,10 @@ MOCK_CRASH_RESULT = '{"type":"result","total_cost_usd":0.01,"usage":{"input_toke
 
 def make_mock_process(stdout_lines, returncode=0):
     proc = AsyncMock()
-    stdout_bytes = "\n".join(stdout_lines).encode("utf-8")
-    proc.communicate = AsyncMock(return_value=(stdout_bytes, b""))
+    lines_bytes = [line.encode("utf-8") + b"\n" for line in stdout_lines] + [b""]
+    readline_iter = iter(lines_bytes)
+    proc.stdout = MagicMock()
+    proc.stdout.readline = AsyncMock(side_effect=lambda: next(readline_iter))
     proc.returncode = returncode
     proc.wait = AsyncMock()
     proc.terminate = MagicMock()
