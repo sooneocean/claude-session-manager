@@ -323,31 +323,6 @@ class TestCrashDetection:
         assert manager.get_session(sid).exit_code == 42
 
 
-class TestStateChangeCallbacks:
-    @pytest.mark.asyncio
-    async def test_callback_fired_on_spawn(self, manager, config):
-        changes = []
-        manager.add_state_change_callback(lambda sid: changes.append(sid))
-
-        proc = make_success_process()
-        with patch("asyncio.create_subprocess_exec", return_value=proc):
-            sid = await manager.spawn(config)
-
-        assert sid in changes
-
-    @pytest.mark.asyncio
-    async def test_callback_fired_on_stop(self, manager, config):
-        changes = []
-
-        proc = make_success_process()
-        with patch("asyncio.create_subprocess_exec", return_value=proc):
-            sid = await manager.spawn(config)
-
-        manager.add_state_change_callback(lambda s: changes.append(s))
-        await manager.stop(sid)
-        assert sid in changes
-
-
 class TestBufferIntegration:
     @pytest.mark.asyncio
     async def test_result_text_appended_to_buffer(self, manager, config):

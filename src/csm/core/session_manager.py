@@ -5,7 +5,7 @@ from datetime import datetime
 
 from csm.models.session import SessionState, SessionConfig, SessionStatus
 from csm.models.cost import CostAggregator
-from csm.core.output_parser import OutputParser, EventType
+from csm.core.output_parser import OutputParser, EventType, ResultEvent, AssistantEvent
 from csm.utils.ring_buffer import RingBuffer
 
 
@@ -56,7 +56,6 @@ class SessionManager:
         self._buffer_store = OutputBufferStore()
         # Maps session_id → currently-executing subprocess (short-lived).
         self._running_processes: dict[str, asyncio.subprocess.Process] = {}
-        self._on_state_change: list[callable] = []
 
     # ------------------------------------------------------------------
     # Properties
@@ -69,20 +68,6 @@ class SessionManager:
     @property
     def buffer_store(self) -> OutputBufferStore:
         return self._buffer_store
-
-    # ------------------------------------------------------------------
-    # Callbacks
-    # ------------------------------------------------------------------
-
-    def add_state_change_callback(self, callback) -> None:
-        self._on_state_change.append(callback)
-
-    def _notify_state_change(self, session_id: str) -> None:
-        for cb in self._on_state_change:
-            try:
-                cb(session_id)
-            except Exception:
-                pass  # callbacks must not break the manager
 
     # ------------------------------------------------------------------
     # Public API
@@ -141,17 +126,17 @@ class SessionManager:
         initial_prompt = "continue" if config.resume_id else "hello, ready to work"
 
         state.status = SessionStatus.RUN
-        self._notify_state_change(state.session_id)
+
 
         try:
             result = await self._run_claude(state, initial_prompt)
             state.status = SessionStatus.WAIT if result is not None else SessionStatus.DEAD
         except Exception:
             state.status = SessionStatus.DEAD
-            self._notify_state_change(state.session_id)
+    
             raise
 
-        self._notify_state_change(state.session_id)
+
         return state.session_id
 
     async def send_command(self, session_id: str, command: str) -> str | None:
@@ -169,16 +154,16 @@ class SessionManager:
             raise RuntimeError("Cannot send command to DEAD session")
 
         state.status = SessionStatus.RUN
-        self._notify_state_change(session_id)
+
 
         try:
             result = await self._run_claude(state, command)
             state.status = SessionStatus.WAIT if result is not None else SessionStatus.DEAD
-            self._notify_state_change(session_id)
+    
             return result
         except Exception:
             state.status = SessionStatus.DEAD
-            self._notify_state_change(session_id)
+    
             return None
 
     async def stop(self, session_id: str) -> None:
@@ -197,7 +182,7 @@ class SessionManager:
                 await proc.wait()
 
         state.status = SessionStatus.DONE
-        self._notify_state_change(session_id)
+
 
     async def restart(self, session_id: str) -> str:
         """Restart *session_id* with its original config.  Returns new session_id."""
@@ -307,7 +292,7 @@ class SessionManager:
             if event.session_id and not state.claude_session_id:
                 state.claude_session_id = event.session_id
 
-            if event.event_type == EventType.RESULT:
+            if isinstance(event, ResultEvent):
                 result_text = event.result_text or ""
                 if event.cost_usd is not None:
                     state.cost_usd = event.cost_usd
@@ -325,7 +310,7 @@ class SessionManager:
                     for rl in result_text.split("\n"):
                         buf.append(rl)
 
-            elif event.event_type == EventType.ASSISTANT and event.content_text and buf is not None:
+            elif isinstance(event, AssistantEvent) and event.content_text and buf is not None:
                 for rl in event.content_text.split("\n"):
                     buf.append(rl)
 

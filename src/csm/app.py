@@ -146,11 +146,19 @@ class CSMApp(App):
         except Exception as e:
             self.notify(str(e), severity="error")
 
-    async def action_filter_sessions(self) -> None:
-        """Placeholder for filter action."""
+    def action_filter_sessions(self) -> None:
+        """Cycle through status filters."""
+        session_list = self.query_one("#session_list", SessionList)
+        current = session_list.cycle_filter()
+        label = current.value if current else "All"
+        self.notify(f"Filter: {label}")
 
-    async def action_sort_sessions(self) -> None:
-        """Placeholder for sort action."""
+    def action_sort_sessions(self) -> None:
+        """Cycle through sort keys."""
+        from csm.widgets.session_list import SortKey
+        session_list = self.query_one("#session_list", SessionList)
+        current = session_list.cycle_sort()
+        self.notify(f"Sort: {current.value}")
 
     async def action_quit_app(self) -> None:
         await self._dispatcher.shutdown()

@@ -75,12 +75,12 @@ async def test_switch_session_updates_content():
 
 @pytest.mark.asyncio
 async def test_auto_scroll_to_bottom():
-    """show_output with >100 lines should cap to last 100."""
+    """show_output displays all provided lines (truncation is caller's responsibility)."""
     lines = [f"line {i}" for i in range(200)]
     app = _PanelApp()
     async with app.run_test() as pilot:
         panel = app.get_panel()
         panel.show_output(lines)
         await pilot.pause()
-        # show_output passes lines[-100:] so at most 100 lines are written
-        assert len(panel.lines) <= 100
+        # v2: show_output no longer truncates — caller (app.py) passes get_lines(100)
+        assert len(panel.lines) == 200

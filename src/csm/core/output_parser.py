@@ -1,4 +1,4 @@
-"""JSON line parser for claude CLI stream-json output - T6"""
+"""JSON line parser for claude CLI stream-json output - T6 + v2 refactor"""
 import json
 import re
 from dataclasses import dataclass
@@ -17,21 +17,32 @@ class EventType(Enum):
 
 @dataclass
 class ParsedEvent:
+    """Base event with common fields."""
     event_type: EventType
     session_id: str | None = None
-    # Result fields
+    sop_stage: str | None = None
+    raw: dict | None = None
+
+
+@dataclass
+class ResultEvent(ParsedEvent):
+    """Event from a 'result' JSON line."""
     cost_usd: float | None = None
     tokens_in: int | None = None
     tokens_out: int | None = None
     result_text: str | None = None
-    # Assistant fields
+
+
+@dataclass
+class AssistantEvent(ParsedEvent):
+    """Event from an 'assistant' JSON line."""
     content_text: str | None = None
-    # Init fields
+
+
+@dataclass
+class InitEvent(ParsedEvent):
+    """Event from a 'system/init' JSON line."""
     model: str | None = None
-    # SOP detection
-    sop_stage: str | None = None  # S0-S7 if detected in text
-    # Raw data
-    raw: dict | None = None
 
 
 class OutputParser:
@@ -39,7 +50,7 @@ class OutputParser:
 
     def parse_line(self, line: str) -> ParsedEvent | None:
         """Parse a single JSON line from stream-json output.
-        Returns ParsedEvent or None if line is empty/unparseable."""
+        Returns a typed ParsedEvent subclass or None if line is empty/unparseable."""
         line = line.strip()
         if not line:
             return None
@@ -65,11 +76,11 @@ class OutputParser:
         else:
             return ParsedEvent(event_type=EventType.UNKNOWN, session_id=session_id, raw=data)
 
-    def _parse_result(self, data: dict, session_id: str | None) -> ParsedEvent:
+    def _parse_result(self, data: dict, session_id: str | None) -> ResultEvent:
         usage = data.get("usage", {})
         result_text = data.get("result", "")
         sop_stage = self._detect_sop_stage(result_text)
-        return ParsedEvent(
+        return ResultEvent(
             event_type=EventType.RESULT,
             session_id=session_id,
             cost_usd=data.get("total_cost_usd"),
@@ -79,21 +90,21 @@ class OutputParser:
             sop_stage=sop_stage,
         )
 
-    def _parse_assistant(self, data: dict, session_id: str | None) -> ParsedEvent:
+    def _parse_assistant(self, data: dict, session_id: str | None) -> AssistantEvent:
         msg = data.get("message", {})
         content_parts = msg.get("content", [])
         text_parts = [p.get("text", "") for p in content_parts if p.get("type") == "text"]
         content_text = "\n".join(text_parts)
         sop_stage = self._detect_sop_stage(content_text)
-        return ParsedEvent(
+        return AssistantEvent(
             event_type=EventType.ASSISTANT,
             session_id=session_id,
             content_text=content_text,
             sop_stage=sop_stage,
         )
 
-    def _parse_init(self, data: dict, session_id: str | None) -> ParsedEvent:
-        return ParsedEvent(
+    def _parse_init(self, data: dict, session_id: str | None) -> InitEvent:
+        return InitEvent(
             event_type=EventType.INIT,
             session_id=session_id,
             model=data.get("model"),

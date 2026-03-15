@@ -9,9 +9,9 @@ class DetailPanel(RichLog):
         self.show_placeholder()
 
     def show_output(self, lines: list[str]) -> None:
-        """Display lines from a session's ring buffer (last 100 lines)."""
+        """Display lines from a session's ring buffer."""
         self.clear()
-        for line in lines[-100:]:
+        for line in lines:
             self.write(line)
 
     def show_placeholder(self) -> None:

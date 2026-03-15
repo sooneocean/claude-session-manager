@@ -1,0 +1,32 @@
+{
+  "version": "3.0.0",
+  "feature": "csm-v2-refactor",
+  "spec_folder": "dev/specs/csm-v2-refactor",
+  "spec_mode": "quick",
+  "work_type": "refactor",
+  "execution_mode": "autopilot",
+  "status": "in_progress",
+  "current_stage": "s4",
+  "stages": {
+    "s0": {
+      "status": "completed",
+      "output": {
+        "work_type": "refactor",
+        "requirement": "CSM v2 品質改善：修復 S5 P2 建議、實作 filter/sort、ParsedEvent 型別安全",
+        "scope_in": [
+          "移除死程式碼 (add_state_change_callback)",
+          "修正雙重截斷",
+          "SessionList 差異更新",
+          "/ 篩選功能",
+          "S 排序功能",
+          "ParsedEvent 型別安全改善",
+          "Textual 版本固定"
+        ],
+        "scope_out": ["session 持久化", "新功能", "架構變更"]
+      }
+    },
+    "s1": {"status": "completed", "output": {"solution_summary": "Quick refactor - 直接修改 6 個檔案"}},
+    "s2": {"status": "skipped"},
+    "s3": {"status": "completed"}
+  }
+}
