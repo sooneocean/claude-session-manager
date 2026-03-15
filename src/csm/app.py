@@ -29,6 +29,7 @@ from csm.widgets.modals import (
     CommandInputModal,
     RunningWarningModal,
     HelpModal,
+    WelcomeScreen,
 )
 
 
@@ -65,6 +66,24 @@ class CSMApp(App):
         # Restore sessions from previous run
         self._restore_sessions()
         self.set_interval(1.0, self._refresh_display)
+        # First-run welcome
+        self._check_first_run()
+
+    def _check_first_run(self) -> None:
+        """Show welcome screen if this is the first time running CSM."""
+        from pathlib import Path
+        csm_dir = Path.home() / ".csm"
+        if not csm_dir.exists():
+            self._show_welcome()
+
+    def _show_welcome(self) -> None:
+        self._do_welcome()
+
+    @work
+    async def _do_welcome(self) -> None:
+        should_create = await self.push_screen_wait(WelcomeScreen())
+        if should_create:
+            self.action_new_session()
 
     def _restore_sessions(self) -> None:
         """Load sessions saved from a previous CSM run."""

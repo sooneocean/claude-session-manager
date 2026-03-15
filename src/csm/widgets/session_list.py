@@ -58,6 +58,17 @@ class SessionList(DataTable):
         filtered = self._apply_filter(sessions)
         sorted_sessions = self._apply_sort(filtered)
 
+        # Show guidance when empty (only if columns are initialized)
+        if not sorted_sessions:
+            if self.columns and not self.rows:
+                self.add_row("", "Press N to create first session", "", "", "", key="__empty__")
+            return
+        # Remove empty placeholder if sessions exist
+        if self.rows:
+            existing = [str(rk.value) for rk in self.rows.keys()]
+            if "__empty__" in existing:
+                self.remove_row("__empty__")
+
         # Remember current cursor position
         try:
             current_cursor_row = self.cursor_row

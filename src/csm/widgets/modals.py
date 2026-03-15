@@ -163,6 +163,55 @@ class RunningWarningModal(ModalScreen):
         self.dismiss(False)
 
 
+class WelcomeScreen(ModalScreen):
+    """First-run welcome screen shown when ~/.csm/ doesn't exist."""
+
+    CSS = """
+    WelcomeScreen { align: center middle; }
+    #dialog {
+        width: 65;
+        height: auto;
+        border: thick $success;
+        padding: 2 3;
+    }
+    """
+
+    WELCOME_TEXT = """\
+[bold green]Welcome to Claude Session Manager![/bold green]
+
+Manage multiple Claude Code sessions from one dashboard.
+
+[bold underline]Quick Start[/bold underline]
+
+  1. Press [bold]N[/bold] to create your first session
+  2. Enter a working directory (your project path)
+  3. Watch Claude's output stream in real-time
+
+[bold underline]Key Shortcuts[/bold underline]
+
+  [bold]N[/bold]     New session       [bold]Enter[/bold] Send command
+  [bold]X[/bold]     Stop session      [bold]R[/bold]     Restart
+  [bold]B[/bold]     Broadcast to all  [bold]H[/bold]     Help
+  [bold]/[/bold]     Filter            [bold]S[/bold]     Sort
+  [bold]Q[/bold]     Quit (auto-saves)
+
+Press [bold]N[/bold] to get started, or [bold]Esc[/bold] to close.
+"""
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="dialog"):
+            yield Static(self.WELCOME_TEXT)
+            with Horizontal():
+                yield Button("Create First Session", variant="success", id="start_btn")
+                yield Button("Skip", id="skip_btn")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        self.dismiss(event.button.id == "start_btn")
+
+    def key_escape(self) -> None:
+        self.dismiss(False)
+
+
 class HelpModal(ModalScreen):
     """Help screen showing keyboard shortcuts and usage info."""
 

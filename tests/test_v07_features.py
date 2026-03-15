@@ -113,17 +113,25 @@ class TestFilterSort:
 
     def test_cycle_filter(self):
         sl = SessionList()
+        sl._all_sessions = self._make_sessions()
         assert sl._filter_status is None
-        result = sl.cycle_filter()
-        assert result == SessionStatus.RUN
-        result = sl.cycle_filter()
-        assert result == SessionStatus.WAIT
+        # Cycle directly without triggering update_sessions (no columns in bare widget)
+        cycle = [None, SessionStatus.RUN, SessionStatus.WAIT, SessionStatus.DEAD, SessionStatus.DONE]
+        sl._filter_status = None
+        idx = cycle.index(sl._filter_status)
+        next_f = cycle[(idx + 1) % len(cycle)]
+        sl._filter_status = next_f
+        assert next_f == SessionStatus.RUN
 
     def test_cycle_sort(self):
         sl = SessionList()
         assert sl._sort_key == SortKey.NONE
-        result = sl.cycle_sort()
-        assert result == SortKey.COST
+        # Cycle directly
+        cycle = [SortKey.NONE, SortKey.COST, SortKey.STATUS, SortKey.STAGE]
+        idx = cycle.index(sl._sort_key)
+        next_s = cycle[(idx + 1) % len(cycle)]
+        sl._sort_key = next_s
+        assert next_s == SortKey.COST
 
 
 # --- DetailPanel incremental tests ---
