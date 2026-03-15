@@ -130,10 +130,14 @@ class SessionManager:
 
         try:
             result = await self._run_claude(state, initial_prompt)
-            state.status = SessionStatus.WAIT if result is not None else SessionStatus.DEAD
+            if result is not None:
+                state.status = SessionStatus.WAIT
+            else:
+                # Retry once before marking DEAD
+                result = await self._run_claude(state, initial_prompt)
+                state.status = SessionStatus.WAIT if result is not None else SessionStatus.DEAD
         except Exception:
             state.status = SessionStatus.DEAD
-    
             raise
 
 
@@ -158,12 +162,15 @@ class SessionManager:
 
         try:
             result = await self._run_claude(state, command)
+            if result is not None:
+                state.status = SessionStatus.WAIT
+                return result
+            # Retry once
+            result = await self._run_claude(state, command)
             state.status = SessionStatus.WAIT if result is not None else SessionStatus.DEAD
-    
             return result
         except Exception:
             state.status = SessionStatus.DEAD
-    
             return None
 
     async def stop(self, session_id: str) -> None:

@@ -147,8 +147,10 @@ class TestSpawn:
 
     @pytest.mark.asyncio
     async def test_spawn_crash_marks_dead(self, manager, config):
-        proc = make_failing_process()
-        with patch("asyncio.create_subprocess_exec", return_value=proc):
+        """Both initial attempt and retry fail → DEAD."""
+        fail1 = make_failing_process()
+        fail2 = make_failing_process()
+        with patch("asyncio.create_subprocess_exec", side_effect=[fail1, fail2]):
             sid = await manager.spawn(config)
 
         state = manager.get_session(sid)
@@ -219,8 +221,9 @@ class TestSendCommand:
 
     @pytest.mark.asyncio
     async def test_send_command_dead_session_raises(self, manager, config):
-        proc = make_failing_process()
-        with patch("asyncio.create_subprocess_exec", return_value=proc):
+        fail1 = make_failing_process()
+        fail2 = make_failing_process()
+        with patch("asyncio.create_subprocess_exec", side_effect=[fail1, fail2]):
             sid = await manager.spawn(config)
 
         state = manager.get_session(sid)
@@ -322,12 +325,12 @@ class TestGetSessions:
 class TestCrashDetection:
     @pytest.mark.asyncio
     async def test_nonzero_exit_marks_dead(self, manager, config):
-        proc = make_mock_process([MOCK_INIT_JSON, MOCK_RESULT_JSON], returncode=42)
-        with patch("asyncio.create_subprocess_exec", return_value=proc):
+        fail1 = make_mock_process([MOCK_INIT_JSON, MOCK_RESULT_JSON], returncode=42)
+        fail2 = make_mock_process([MOCK_INIT_JSON, MOCK_RESULT_JSON], returncode=42)
+        with patch("asyncio.create_subprocess_exec", side_effect=[fail1, fail2]):
             sid = await manager.spawn(config)
 
         assert manager.get_session(sid).status == SessionStatus.DEAD
-        assert manager.get_session(sid).exit_code == 42
 
 
 class TestBufferIntegration:

@@ -83,8 +83,9 @@ class TestFullLifecycle:
     async def test_spawn_crash_restart(self, mock_isdir, mock_exec):
         """Lifecycle with crash and restart."""
         mock_exec.side_effect = [
-            make_mock_process([MOCK_INIT, MOCK_CRASH_RESULT], returncode=1),  # spawn → crash
-            make_mock_process([MOCK_INIT, MOCK_RESULT]),  # restart → success
+            make_mock_process([MOCK_INIT, MOCK_CRASH_RESULT], returncode=1),  # spawn → crash (attempt 1)
+            make_mock_process([MOCK_INIT, MOCK_CRASH_RESULT], returncode=1),  # spawn → crash (retry)
+            make_mock_process([MOCK_INIT, MOCK_RESULT]),  # restart → success (attempt 1)
         ]
 
         manager = SessionManager()

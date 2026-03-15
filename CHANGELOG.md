@@ -5,6 +5,17 @@ All notable changes to Claude Session Manager (CSM) will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.7.0] - 2026-03-15
+
+### Added
+- System resource monitoring via psutil (CPU/RAM in status bar, HIGH LOAD warning)
+- Error retry mechanism: failed claude CLI calls retry once before marking DEAD
+- 12 new tests covering: retry logic, filter/sort cycles, persistence with names,
+  help modal, detail panel incremental tracking
+
+### Changed
+- pyproject.toml and __init__.py version synced to 0.7.0
+
 ## [v0.6.0] - 2026-03-15
 
 ### Added

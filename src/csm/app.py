@@ -1,6 +1,12 @@
 """Claude Session Manager - Textual App entry point. T12"""
 import os
 
+try:
+    import psutil
+    HAS_PSUTIL = True
+except ImportError:
+    HAS_PSUTIL = False
+
 from textual import work
 from textual.app import App, ComposeResult
 from textual.widgets import Header, Footer, Static
@@ -84,9 +90,21 @@ class CSMApp(App):
             for s in sessions
             if s.status not in (SessionStatus.DONE, SessionStatus.DEAD)
         )
-        self.query_one("#status_bar", Static).update(
-            f"Total: ${total.total_cost_usd:.2f} | Sessions: {active}/{len(sessions)}"
-        )
+        status_text = f"Total: ${total.total_cost_usd:.2f} | Sessions: {active}/{len(sessions)}"
+
+        # Resource monitoring (psutil)
+        if HAS_PSUTIL:
+            cpu = psutil.cpu_percent(interval=None)
+            ram = psutil.virtual_memory().percent
+            status_text += f" | CPU: {cpu:.0f}% RAM: {ram:.0f}%"
+            if cpu > 90 or ram > 80:
+                status_text += " [bold red]HIGH LOAD[/bold red]"
+
+        # Session limit warning
+        if active >= self._session_manager.SESSION_LIMIT:
+            status_text += " [bold red]LIMIT REACHED[/bold red]"
+
+        self.query_one("#status_bar", Static).update(status_text)
 
         # Incrementally update detail panel with new output lines
         if self._selected_session_id:
