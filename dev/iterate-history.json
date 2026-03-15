@@ -23,6 +23,23 @@
       "work_type": "refactor",
       "commits": ["ef6558b"],
       "sop_folder": null
+    },
+    {
+      "version": "v0.4.0",
+      "date": "2026-03-15",
+      "features": ["/iterate skill for automated product iteration"],
+      "work_type": "new_feature",
+      "commits": ["1a496d4"],
+      "sop_folder": null
+    },
+    {
+      "version": "v0.5.0",
+      "date": "2026-03-15",
+      "features": ["Session naming support", "README product docs", "Spec-code alignment"],
+      "work_type": "new_feature",
+      "commits": ["08bb855"],
+      "sop_folder": null,
+      "source": "/iterate (first automated iteration)"
     }
   ]
 }
