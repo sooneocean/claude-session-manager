@@ -5,6 +5,12 @@ All notable changes to Claude Session Manager (CSM) will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.9.1] - 2026-03-16
+
+### Changed
+- Complete README rewrite: problem statement, quick start, architecture diagram,
+  dashboard mockup, "For AI Agents" section with design decisions and modification guide
+
 ## [v0.9.0] - 2026-03-15
 
 ### Added
