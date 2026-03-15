@@ -5,6 +5,13 @@ All notable changes to Claude Session Manager (CSM) will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.9.0] - 2026-03-15
+
+### Added
+- Auto-compact: sends /compact when session tokens exceed 50K threshold
+- Token counters reset after successful compact
+- Infinite loop prevention (won't compact a /compact response)
+
 ## [v0.8.0] - 2026-03-15
 
 ### Added

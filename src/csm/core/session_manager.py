@@ -48,6 +48,7 @@ class SessionManager:
     """
 
     SESSION_LIMIT = 20
+    AUTO_COMPACT_TOKEN_THRESHOLD = 50000  # tokens_in + tokens_out
 
     def __init__(self) -> None:
         self._sessions: dict[str, SessionState] = {}
@@ -164,6 +165,8 @@ class SessionManager:
             result = await self._run_claude(state, command)
             if result is not None:
                 state.status = SessionStatus.WAIT
+                # Auto-compact check
+                await self._auto_compact_if_needed(state)
                 return result
             # Retry once
             result = await self._run_claude(state, command)
@@ -172,6 +175,29 @@ class SessionManager:
         except Exception:
             state.status = SessionStatus.DEAD
             return None
+
+    async def _auto_compact_if_needed(self, state: SessionState) -> None:
+        """Send /compact if session token usage exceeds threshold."""
+        total_tokens = state.tokens_in + state.tokens_out
+        if total_tokens < self.AUTO_COMPACT_TOKEN_THRESHOLD:
+            return
+        if not state.claude_session_id:
+            return
+        # Only compact if not already a /compact command (prevent infinite loop)
+        if state.last_result and "/compact" in state.last_result:
+            return
+        import logging
+        logging.getLogger(__name__).info(
+            "Auto-compact triggered for session %s (tokens: %d)",
+            state.session_id, total_tokens,
+        )
+        state.status = SessionStatus.RUN
+        await self._run_claude(state, "/compact")
+        state.status = SessionStatus.WAIT
+        # Reset token counters after compact
+        state.tokens_in = 0
+        state.tokens_out = 0
+        self._cost_aggregator.update(state.session_id, 0, 0, state.cost_usd)
 
     async def stop(self, session_id: str) -> None:
         """Mark *session_id* as DONE.  Terminates any in-flight process."""
