@@ -161,3 +161,58 @@ class RunningWarningModal(ModalScreen):
 
     def key_escape(self) -> None:
         self.dismiss(False)
+
+
+class HelpModal(ModalScreen):
+    """Help screen showing keyboard shortcuts and usage info."""
+
+    CSS = """
+    HelpModal { align: center middle; }
+    #dialog {
+        width: 65;
+        height: auto;
+        border: thick $primary;
+        padding: 1 2;
+        max-height: 80%;
+    }
+    """
+
+    HELP_TEXT = """\
+[bold]Claude Session Manager (CSM)[/bold]
+
+[bold underline]Keyboard Shortcuts[/bold underline]
+
+  [bold]N[/bold]     New session (specify dir, name, model)
+  [bold]Enter[/bold] Send command to selected session
+  [bold]X[/bold]     Stop selected session
+  [bold]R[/bold]     Restart selected session
+  [bold]B[/bold]     Broadcast command to all WAIT sessions
+  [bold]/[/bold]     Filter by status (cycle: All/RUN/WAIT/DEAD/DONE)
+  [bold]S[/bold]     Sort (cycle: None/Cost/Status/Stage)
+  [bold]H[/bold]     This help screen
+  [bold]Q[/bold]     Quit (sessions are saved)
+
+[bold underline]Session States[/bold underline]
+
+  [green]RUN[/green]   Claude is processing a command
+  [yellow]WAIT[/yellow]  Ready for your next command
+  [red]DEAD[/red]  Process crashed (press R to restart)
+  [dim]DONE[/dim]  Session stopped normally
+
+[bold underline]Architecture[/bold underline]
+
+  Each interaction spawns: claude -p --resume --output-format stream-json
+  Output is streamed line-by-line to the detail panel in real-time.
+  Sessions persist to ~/.csm/sessions.json on quit.
+"""
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="dialog"):
+            yield Static(self.HELP_TEXT)
+            yield Button("Close", variant="primary", id="close_btn")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        self.dismiss(None)
+
+    def key_escape(self) -> None:
+        self.dismiss(None)

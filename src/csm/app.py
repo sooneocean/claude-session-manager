@@ -22,6 +22,7 @@ from csm.widgets.modals import (
     ConfirmStopModal,
     CommandInputModal,
     RunningWarningModal,
+    HelpModal,
 )
 
 
@@ -37,8 +38,10 @@ class CSMApp(App):
         Binding("r", "restart_session", "Restart"),
         Binding("enter", "send_command", "Command"),
         Binding("q", "quit_app", "Quit"),
+        Binding("b", "broadcast_command", "Broadcast"),
         Binding("slash", "filter_sessions", "Filter"),
         Binding("s", "sort_sessions", "Sort"),
+        Binding("h", "show_help", "Help"),
     ]
 
     def compose(self) -> ComposeResult:
@@ -182,6 +185,38 @@ class CSMApp(App):
         session_list = self.query_one("#session_list", SessionList)
         current = session_list.cycle_sort()
         self.notify(f"Sort: {current.value}")
+
+    def action_broadcast_command(self) -> None:
+        self._do_broadcast()
+
+    @work
+    async def _do_broadcast(self) -> None:
+        """Send the same command to all WAIT sessions."""
+        wait_sessions = [
+            s for s in self._session_manager.get_sessions()
+            if s.status == SessionStatus.WAIT
+        ]
+        if not wait_sessions:
+            self.notify("No WAIT sessions to broadcast to", severity="warning")
+            return
+
+        cmd = await self.push_screen_wait(
+            CommandInputModal(f"{len(wait_sessions)} WAIT sessions")
+        )
+        if not cmd:
+            return
+
+        sent = 0
+        for s in wait_sessions:
+            try:
+                await self._dispatcher.enqueue(s.session_id, cmd)
+                sent += 1
+            except Exception:
+                pass
+        self.notify(f"Broadcast sent to {sent}/{len(wait_sessions)} sessions")
+
+    def action_show_help(self) -> None:
+        self.push_screen(HelpModal())
 
     async def action_quit_app(self) -> None:
         # Save sessions before shutdown

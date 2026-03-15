@@ -125,8 +125,8 @@
         ],
         "solution_summary": "Python TUI (Textual) + asyncio subprocess 管理 + 正則/狀態機輸出解析。14 個任務，Wave 0 驗證 claude CLI PIPE 行為後才開始 OutputParser 實作。",
         "tech_debt": [
-          "OutputParser 解析規則需在 Wave 0 後根據真實輸出更新",
-          "Token 成本計算依賴 claude CLI 輸出格式，格式變動需更新 parser",
+          "[RESOLVED v0.3.0] OutputParser 改為 JSON line parser，不再依賴正則",
+          "[RESOLVED v0.3.0] Token 成本直接從 stream-json result event 取得",
           "系統資源監控（E6）降級為 session 數量警告（psutil 為可選依賴）"
         ],
         "regression_risks": [],
