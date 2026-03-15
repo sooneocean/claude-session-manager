@@ -13,6 +13,7 @@ from csm.core.session_manager import (
     DuplicateSessionError,
 )
 from csm.core.command_dispatcher import CommandDispatcher, QueueFullError, SessionDeadError
+from csm.core.persistence import save_sessions, load_sessions
 from csm.models.session import SessionStatus
 from csm.widgets.session_list import SessionList
 from csm.widgets.detail_panel import DetailPanel
@@ -52,7 +53,22 @@ class CSMApp(App):
         self._session_manager = SessionManager()
         self._dispatcher = CommandDispatcher(self._session_manager)
         self._selected_session_id: str | None = None
+        # Restore sessions from previous run
+        self._restore_sessions()
         self.set_interval(1.0, self._refresh_display)
+
+    def _restore_sessions(self) -> None:
+        """Load sessions saved from a previous CSM run."""
+        saved = load_sessions()
+        for state in saved:
+            self._session_manager._sessions[state.session_id] = state
+            self._session_manager._buffer_store.create(state.session_id)
+            self._session_manager._cost_aggregator.update(
+                state.session_id, state.tokens_in, state.tokens_out, state.cost_usd
+            )
+            self._dispatcher.register_session(state.session_id)
+        if saved:
+            self.notify(f"Restored {len(saved)} sessions")
 
     def _refresh_display(self) -> None:
         """Refresh the session list and status bar."""
@@ -161,6 +177,9 @@ class CSMApp(App):
         self.notify(f"Sort: {current.value}")
 
     async def action_quit_app(self) -> None:
+        # Save sessions before shutdown
+        sessions = self._session_manager.get_sessions()
+        save_sessions(sessions)
         await self._dispatcher.shutdown()
         await self._session_manager.shutdown()
         self.exit()
