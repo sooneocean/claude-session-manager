@@ -1,0 +1,28 @@
+{
+  "iterations": [
+    {
+      "version": "v0.1.0",
+      "date": "2026-03-15",
+      "features": ["Initial CSM TUI tool with session lifecycle, dashboard, command dispatch"],
+      "work_type": "new_feature",
+      "commits": ["db87d40"],
+      "sop_folder": "dev/specs/claude-session-manager"
+    },
+    {
+      "version": "v0.2.0",
+      "date": "2026-03-15",
+      "features": ["Quality refactor: differential update, filter/sort, typed events", "Session persistence"],
+      "work_type": "refactor",
+      "commits": ["9ecde0a", "d392500"],
+      "sop_folder": "dev/specs/csm-v2-refactor"
+    },
+    {
+      "version": "v0.3.0",
+      "date": "2026-03-15",
+      "features": ["Real-time streaming output (readline loop)"],
+      "work_type": "refactor",
+      "commits": ["ef6558b"],
+      "sop_folder": null
+    }
+  ]
+}
