@@ -238,7 +238,7 @@ sequenceDiagram
         TUI-->>U: 顯示確認提示
     else Session 已 crash (E2)
         CP->>CLI: stdin.write raises BrokenPipeError
-        CP->>SM: session_manager.get_session(id).status checked → DEAD
+        CP->>SM: notify_crash(session_id)
         SM->>SS: 更新 status=DEAD
         SS-->>TUI: reactive 通知
         TUI-->>U: 顯示 Crash Alert
@@ -298,12 +298,8 @@ class SessionManager:
 
 ```python
 class CommandDispatcher:
-    def __init__(self, session_manager: SessionManager) -> None:
-        """建構子注入 SessionManager，用於呼叫 send_command 和讀取 session 狀態。"""
-
     async def enqueue(self, session_id: str, command: str) -> None:
-        """將指令加入 session 的 FIFO 佇列。consumer task 透過 session_manager.send_command() 執行。
-        若 send_command 發現 session 已 DEAD，consumer 捕捉例外並停止消費。
+        """將指令加入 session 的 FIFO 佇列。
         Raises: SessionNotFoundError, SessionDeadError, QueueFullError"""
 ```
 
@@ -313,8 +309,8 @@ class CommandDispatcher:
 class OutputParser:
     def parse_line(self, raw_line: str) -> ParsedEvent | None:
         """解析一行 stdout 輸出。
-        回傳 ParsedEvent (sop_stage | token_update | text)
-        或 None（無法辨識的行）。WAIT 狀態判定由 SessionManager 負責。"""
+        回傳 ParsedEvent (sop_stage_change | token_update | status_change | plain_text)
+        或 None（無法辨識的行）。"""
 ```
 
 ### 4.2 資料模型
@@ -358,7 +354,7 @@ class SessionStatus(Enum):
 
 @dataclass
 class ParsedEvent:
-    event_type: str              # sop_stage | token_update | text（WAIT 狀態判定由 SessionManager 負責，不在 ParsedEvent 中）
+    event_type: str              # sop_stage | token_update | status_change | text
     data: dict                   # 事件資料（依 event_type 不同）
 
 @dataclass
@@ -533,7 +529,6 @@ class RingBuffer:
   - [ ] stdout reader task 正確啟動和清理
   - [ ] Windows 環境下 terminate 行為正確
   - [ ] 自動化測試（mock subprocess）覆蓋：spawn 成功路徑、DirectoryNotFoundError、DuplicateSessionError、stop terminate→timeout→kill 路徑、crash detection 觸發 DEAD
-  - [ ] WAIT 狀態判定：stdout reader 在最後輸出後 5 秒無新輸出時標記 WAIT（含對應測試）
 - **驗收方式**: 自動化測試通過 + 手動啟動/停止/重啟 claude session 成功
 
 #### Task #8: CommandDispatcher 實作
@@ -548,8 +543,7 @@ class RingBuffer:
   - [ ] consumer task 逐一寫入 stdin
   - [ ] BrokenPipeError 正確捕捉並觸發 crash 流程
   - [ ] session stop/restart 時 consumer task 正確清理，Queue 清空（避免舊指令送入新 session）
-  - [ ] 自動化測試覆蓋：enqueue 成功、QueueFullError、FIFO 順序、cleanup 清空佇列、BrokenPipeError 處理
-- **驗收方式**: 自動化測試通過 + 手動對執行中的 session 發送指令驗證
+- **驗收方式**: 對執行中的 session 發送指令，觀察 claude 回應
 
 #### Task #9: Session 列表 Widget
 - **類型**: TUI
@@ -623,7 +617,6 @@ class RingBuffer:
   - [ ] 退出時所有 session 正確停止
   - [ ] 狀態列即時更新總成本
   - [ ] SESSION_LIMIT 超過時顯示警告（E6）
-  - [ ] QueueFullError 捕捉並顯示 notify 警告（「指令佇列已滿，請稍後再試」）
 - **驗收方式**: 啟動工具 → 新增 session → 觀察狀態 → 發送指令 → 停止 session → 退出
 
 #### Task #13: 整合測試 + 手動測試計畫
@@ -635,7 +628,7 @@ class RingBuffer:
 - **描述**: 撰寫整合測試腳本和手動測試清單。整合測試用 Textual 的 `app.run_test()` pilot API 模擬鍵盤操作。手動測試清單覆蓋所有成功標準（S0 第 5 節）和六維度例外（E1-E6）。
 - **DoD**:
   - [ ] 整合測試腳本可執行
-  - [ ] 手動測試清單覆蓋 10 個驗收標準（AC-1 至 AC-10）
+  - [ ] 手動測試清單覆蓋 7 個成功標準
   - [ ] E1-E6 例外都有測試場景
 - **驗收方式**: 整合測試通過 + 手動測試清單審閱
 

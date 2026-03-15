@@ -298,12 +298,8 @@ class SessionManager:
 
 ```python
 class CommandDispatcher:
-    def __init__(self, session_manager: SessionManager) -> None:
-        """建構子注入 SessionManager，用於呼叫 send_command 和讀取 session 狀態。"""
-
     async def enqueue(self, session_id: str, command: str) -> None:
-        """將指令加入 session 的 FIFO 佇列。consumer task 透過 session_manager.send_command() 執行。
-        若 send_command 發現 session 已 DEAD，consumer 捕捉例外並停止消費。
+        """將指令加入 session 的 FIFO 佇列。
         Raises: SessionNotFoundError, SessionDeadError, QueueFullError"""
 ```
 
@@ -313,8 +309,8 @@ class CommandDispatcher:
 class OutputParser:
     def parse_line(self, raw_line: str) -> ParsedEvent | None:
         """解析一行 stdout 輸出。
-        回傳 ParsedEvent (sop_stage | token_update | text)
-        或 None（無法辨識的行）。WAIT 狀態判定由 SessionManager 負責。"""
+        回傳 ParsedEvent (sop_stage_change | token_update | status_change | plain_text)
+        或 None（無法辨識的行）。"""
 ```
 
 ### 4.2 資料模型

@@ -238,7 +238,7 @@ sequenceDiagram
         TUI-->>U: 顯示確認提示
     else Session 已 crash (E2)
         CP->>CLI: stdin.write raises BrokenPipeError
-        CP->>SM: session_manager.get_session(id).status checked → DEAD
+        CP->>SM: notify_crash(session_id)
         SM->>SS: 更新 status=DEAD
         SS-->>TUI: reactive 通知
         TUI-->>U: 顯示 Crash Alert
@@ -298,13 +298,9 @@ class SessionManager:
 
 ```python
 class CommandDispatcher:
-    def __init__(self, session_manager: SessionManager) -> None:
-        """建構子注入 SessionManager，用於呼叫 send_command 和讀取 session 狀態。"""
-
     async def enqueue(self, session_id: str, command: str) -> None:
-        """將指令加入 session 的 FIFO 佇列。consumer task 透過 session_manager.send_command() 執行。
-        若 send_command 發現 session 已 DEAD，consumer 捕捉例外並停止消費。
-        Raises: SessionNotFoundError, SessionDeadError, QueueFullError"""
+        """將指令加入 session 的 FIFO 佇列。
+        Raises: SessionNotFoundError, SessionDeadError"""
 ```
 
 **OutputParser**
@@ -313,8 +309,8 @@ class CommandDispatcher:
 class OutputParser:
     def parse_line(self, raw_line: str) -> ParsedEvent | None:
         """解析一行 stdout 輸出。
-        回傳 ParsedEvent (sop_stage | token_update | text)
-        或 None（無法辨識的行）。WAIT 狀態判定由 SessionManager 負責。"""
+        回傳 ParsedEvent (sop_stage_change | token_update | status_change | plain_text)
+        或 None（無法辨識的行）。"""
 ```
 
 ### 4.2 資料模型
@@ -335,12 +331,9 @@ class SessionState:
     last_activity: datetime      # 最後一次 stdout 輸出時間
     tokens_in: int               # 累計 input tokens
     tokens_out: int              # 累計 output tokens
-    cost_usd: float              # 累計成本（美元）— 單一事實來源
+    cost_usd: float              # 累計成本（美元）
     # 注意: output_buffer (RingBuffer) 由 OutputBufferStore 獨立管理，不嵌入 SessionState
     # 這保持 SessionState 為純資料 dataclass（可序列化、可 hash）
-    # 成本資料流向: OutputParser 解析 token → SessionState 更新 → CostAggregator.update() 同步
-    # SessionState 是個別成本的事實來源，CostAggregator 只做彙總（讀取 SessionState 後寫入自身快取）
-    # TUI 列表讀 SessionState.cost_usd，狀態列讀 CostAggregator.get_total()
 
 class OutputBufferStore:
     """獨立管理每個 session 的輸出緩衝區。"""
@@ -358,15 +351,8 @@ class SessionStatus(Enum):
 
 @dataclass
 class ParsedEvent:
-    event_type: str              # sop_stage | token_update | text（WAIT 狀態判定由 SessionManager 負責，不在 ParsedEvent 中）
+    event_type: str              # sop_stage | token_update | status_change | text
     data: dict                   # 事件資料（依 event_type 不同）
-
-@dataclass
-class CostSummary:
-    total_tokens_in: int = 0
-    total_tokens_out: int = 0
-    total_cost_usd: float = 0.0
-    session_count: int = 0
 
 class RingBuffer:
     """固定容量環形緩衝區，儲存最近 N 行文字。"""
@@ -412,8 +398,7 @@ class RingBuffer:
   - [ ] `src/csm/` 目錄結構完整（core/, models/, widgets/, utils/ 子目錄含 `__init__.py`）
   - [ ] `pip install -e .` 成功
   - [ ] `python -m csm` 可執行（即使只顯示空畫面）
-  - [ ] pyproject.toml 包含 pytest 為 dev dependency，`python -m pytest` 可在專案根目錄執行
-- **驗收方式**: `pip install -e ".[dev]"` + `csm` 指令可啟動 + `python -m pytest` 可執行
+- **驗收方式**: `pip install -e .` + `csm` 指令可啟動
 
 #### Task #1: Wave 0 — Claude CLI PIPE 模式驗證
 - **類型**: 探索驗證
@@ -465,7 +450,7 @@ class RingBuffer:
 - **DoD**:
   - [ ] `strip_ansi` 函式實作完成
   - [ ] 處理 CR 覆寫：`"hello\rworld"` → `"world"`
-  - [ ] 單元測試覆蓋至少 3 種 ANSI pattern：SGR 顏色 (`\x1b[31m`)、CSI cursor move (`\x1b[2J`)、OSC title set (`\x1b]0;title\x07`)
+  - [ ] 單元測試覆蓋常見 ANSI escape pattern
 - **驗收方式**: 單元測試全部通過
 
 #### Task #4: Session 資料模型
@@ -505,21 +490,22 @@ class RingBuffer:
 - **描述**: 實作 `src/csm/core/output_parser.py`。基於 Wave 0 驗證結果設計解析策略。**初版解析規則（待 Wave 0 修正）**：
   - **SOP 階段**: 正則匹配 `S[0-7]` 或 `Launching skill: s[0-7]` 等關鍵字
   - **Token 用量**: 匹配 `Token usage:` 或 `total_cost` 等模式
-  - **Session 狀態判定**：由 SessionManager 的 stdout reader task 負責（非 OutputParser）。OutputParser 只解析單行內容，不做計時。SessionManager 在最後一次 stdout 輸出後 5 秒無新輸出時，將 session 標記為 WAIT。
+  - **Session 狀態**: 無輸出超過 N 秒 → WAIT；有持續輸出 → RUN；process exit → DONE/DEAD
+  - 狀態機管理當前解析上下文
   - 每行先經過 `strip_ansi`，再餵給 regex 匹配，結果封裝為 `ParsedEvent`
 - **DoD**:
   - [ ] `OutputParser.parse_line` 實作完成
   - [ ] 狀態機正確追蹤 SOP 階段轉換
-  - [ ] 單元測試使用 Wave 0 捕獲的真實輸出樣本（若 Wave 0 為 NO-GO，改用備案架構的 stream-json 模擬輸出作為測試基準）
+  - [ ] 單元測試使用 Wave 0 捕獲的真實輸出樣本
   - [ ] 對無法辨識的行回傳 plain_text 事件（不丟棄）
-- **驗收方式**: 用 Wave 0 樣本資料（或備案樣本）通過單元測試
+- **驗收方式**: 用 Wave 0 樣本資料通過單元測試
 
 #### Task #7: SessionManager 實作
 - **類型**: 核心邏輯
 - **FA**: FA-A
 - **複雜度**: L
 - **Agent**: python-expert
-- **依賴**: Task #4, #6（介面定義即可，不需 #6 完整實作；可先用 stub OutputParser 並行開發）
+- **依賴**: Task #4, #6
 - **描述**: 實作 `src/csm/core/session_manager.py`。核心職責：
   1. **spawn**: `asyncio.create_subprocess_exec` 啟動 claude CLI，建構正確的命令列參數（`claude --resume ID --model X --permission-mode Y` 等）。啟動 stdout reader asyncio.Task。查重邏輯（E5）。
   2. **stop**: `process.terminate()` → `asyncio.wait_for(process.wait(), timeout=5)` → timeout 則 `process.kill()`。清理 reader task。
@@ -533,7 +519,6 @@ class RingBuffer:
   - [ ] stdout reader task 正確啟動和清理
   - [ ] Windows 環境下 terminate 行為正確
   - [ ] 自動化測試（mock subprocess）覆蓋：spawn 成功路徑、DirectoryNotFoundError、DuplicateSessionError、stop terminate→timeout→kill 路徑、crash detection 觸發 DEAD
-  - [ ] WAIT 狀態判定：stdout reader 在最後輸出後 5 秒無新輸出時標記 WAIT（含對應測試）
 - **驗收方式**: 自動化測試通過 + 手動啟動/停止/重啟 claude session 成功
 
 #### Task #8: CommandDispatcher 實作
@@ -548,8 +533,7 @@ class RingBuffer:
   - [ ] consumer task 逐一寫入 stdin
   - [ ] BrokenPipeError 正確捕捉並觸發 crash 流程
   - [ ] session stop/restart 時 consumer task 正確清理，Queue 清空（避免舊指令送入新 session）
-  - [ ] 自動化測試覆蓋：enqueue 成功、QueueFullError、FIFO 順序、cleanup 清空佇列、BrokenPipeError 處理
-- **驗收方式**: 自動化測試通過 + 手動對執行中的 session 發送指令驗證
+- **驗收方式**: 對執行中的 session 發送指令，觀察 claude 回應
 
 #### Task #9: Session 列表 Widget
 - **類型**: TUI
@@ -623,7 +607,6 @@ class RingBuffer:
   - [ ] 退出時所有 session 正確停止
   - [ ] 狀態列即時更新總成本
   - [ ] SESSION_LIMIT 超過時顯示警告（E6）
-  - [ ] QueueFullError 捕捉並顯示 notify 警告（「指令佇列已滿，請稍後再試」）
 - **驗收方式**: 啟動工具 → 新增 session → 觀察狀態 → 發送指令 → 停止 session → 退出
 
 #### Task #13: 整合測試 + 手動測試計畫
@@ -635,7 +618,7 @@ class RingBuffer:
 - **描述**: 撰寫整合測試腳本和手動測試清單。整合測試用 Textual 的 `app.run_test()` pilot API 模擬鍵盤操作。手動測試清單覆蓋所有成功標準（S0 第 5 節）和六維度例外（E1-E6）。
 - **DoD**:
   - [ ] 整合測試腳本可執行
-  - [ ] 手動測試清單覆蓋 10 個驗收標準（AC-1 至 AC-10）
+  - [ ] 手動測試清單覆蓋 7 個成功標準
   - [ ] E1-E6 例外都有測試場景
 - **驗收方式**: 整合測試通過 + 手動測試清單審閱
 

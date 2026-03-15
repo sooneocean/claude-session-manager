@@ -1,3 +1,203 @@
+# Spec Review Task
+
+你是嚴格的 Spec 審查專家。請審查以下 spec，找出所有問題。
+
+## Review Standards
+
+# Spec & Code Review 審查標準
+
+> 本檔案為統一審查標準，涵蓋 Spec / Code / Test 三類審查。
+> 用於：`review-dialogue.md` Context Assembly、`spec-review` / `code-review` 參考。
+
+## 審查範圍規則
+
+| 文件 | 角色 | 說明 |
+|------|------|------|
+| S1 dev_spec | **審查目標**（Spec Review） | 主要審查對象 |
+| git diff + source | **審查目標**（Code Review） | 主要審查對象 |
+| S0 brief_spec | **背景參考** | 用於對照需求是否被涵蓋，不對 S0 提 P0/P1 |
+| SDD Context | **上下文** | 用於理解階段進度與決策脈絡 |
+
+---
+
+## Spec Review 審查項目
+
+### 1. 完整性
+- 每個任務都有可測試的 DoD
+- 驗收標準使用 Given-When-Then，覆蓋 happy + error path
+- 任務依賴關係清楚、粒度合理
+- 涵蓋所有 S0 成功標準
+- 技術決策有理由、有替代方案考量
+
+### 2. 技術合規
+- Data Flow 遵循專案既有的分層架構
+- 各層職責清晰，不越界
+- 命名與既有 codebase 風格一致
+
+### 3. Codebase 一致性
+- 提到的 class/method/endpoint 名稱存在或明確標為新建
+- endpoint 路徑與路由定義一致
+- DB 表/欄位名稱與現有 schema 一致
+- 未違反已知架構約束
+
+### 4. 風險與影響
+- 影響範圍（impact_scope）完整列出
+- 回歸風險、相依關係、安全性影響、效能影響已評估
+
+### 5. S0 成功標準對照
+- 每條成功標準可追溯到任務/驗收標準
+- 無遺漏、無超出 scope_out
+
+---
+
+## Code Review 審查項目
+
+### 1. 架構合規
+- 各層職責清晰，業務邏輯在正確的層
+- 遵循專案既有的分層架構模式
+
+### 2. 命名慣例
+- 遵循專案指定的命名規範
+- 檔案/目錄命名與既有結構一致
+
+### 3. DB 安全
+- 使用 parameterized queries（防 SQL injection）
+- 軟刪除遵循專案慣例
+- 適當的 index 設計
+
+### 4. 安全性
+- 敏感資料不硬編碼、.env 不入 Git
+- 輸入驗證完整
+- 認證端點受適當保護
+- 不洩漏 stack trace
+
+### 5. 測試品質
+- 測試覆蓋 happy + error path
+- 外部服務使用 mock
+- 測試命名清楚表達測試意圖
+
+### 6. 效能
+- 無 N+1 查詢
+- 大量資料有分頁
+- 適當使用 index
+
+---
+
+## Test Review 審查項目
+
+### 1. 測試覆蓋
+- 每個任務的 DoD 有對應的測試案例
+- 涵蓋 happy path + error path
+- 關鍵業務邏輯有獨立測試
+
+### 2. 測試品質
+- 遵循專案測試框架規範
+- DB 測試使用隔離環境
+- 外部服務使用 mock
+- 測試命名清楚表達測試意圖
+
+### 3. 失敗分析
+- 測試失敗原因明確（非 flaky / 環境問題）
+- 失敗測試的根因追溯到具體 source code 位置
+- 修正後重跑驗證確實解決問題
+
+### 4. 驗收標準對照
+- 每條驗收標準可追溯到至少一個測試案例
+- 未覆蓋的驗收標準明確標記（含原因）
+
+---
+
+## 嚴重度判定
+
+| 等級 | 定義 |
+|------|------|
+| **P0** | 阻斷：安全漏洞、資料遺失、架構根本錯誤、需求理解偏差 |
+| **P1** | 重要：邏輯錯誤、缺驗證、效能瓶頸、不符規範、DoD 不可測試 |
+| **P2** | 建議：命名風格、註解品質、可讀性、最佳實踐 |
+
+## 問題分類
+
+| Category | 說明 |
+|----------|------|
+| `security` | SQL injection、XSS、未驗證端點 |
+| `logic` | 業務邏輯錯誤、計算錯誤、邊界條件 |
+| `architecture` | 架構違規（層級混亂、職責不清） |
+| `naming` | 命名不符慣例 |
+| `performance` | N+1、缺 index、timeout |
+| `compliance` | 不符 spec/DoD 要求 |
+| `completeness` | 缺少必要實作（Spec Review） |
+| `consistency` | 不符既有 codebase 風格 |
+
+## 輸出格式
+
+```markdown
+## P0 問題（必須修正）
+[逐條列出，每條包含：問題、位置、影響、建議修正]
+
+## P1 問題（需修正）
+[逐條列出]
+
+## P2 建議（不阻擋）
+[逐條列出]
+
+## 整體評估
+[通過 / 需修正 / 重大問題]
+```
+
+全部使用**繁體中文**輸出。
+
+## Output Format
+
+# Spec Review Output Schema — Convergence Mode
+
+> 禁止在最終輸出夾帶思考過程/內部推理，只允許結論與必要依據。
+> 本 schema 專用於收斂模式（spec-converge），與對抗式審查的 output-schema.md 有以下差異：
+> - decision 使用 `APPROVED | REJECTED`（非 `PASS | PASS_WITH_FIXES | BLOCKED`）
+> - APPROVED 條件：P0=0 且 P1=0 且 P2=0
+
+## Severity Definition
+
+- P0: 設計/規格層錯誤，會導致方向錯誤或架構衝突，必須先修再做
+- P1: 實作層問題，會造成 bug/風險/不可維護，必須修
+- P2: 改善建議，不阻擋合併
+
+## Findings
+
+### [SR-P1-001] P1 - 問題標題
+
+- id: `SR-P1-001`
+- severity: `P0 | P1 | P2`
+- category: `architecture | logic | security | test | hardcode | duplication | performance | consistency`
+- file: `path/to/file` or `spec section`
+- line: `行號 or N/A`
+- rule: `違反的規則/標準`
+- evidence: `具體觀察到的事實，不要抽象形容`
+- impact: `風險與影響範圍`
+- fix: `可執行修復建議`
+
+### ID 命名規則
+
+- Spec Review: `SR-{severity}-{序號}` (e.g. `SR-P0-001`, `SR-P1-002`)
+- 嚴重度只允許：`P0 | P1 | P2`
+- 序號固定三碼，同一輪不可重複，`001` 起跳
+- 一個 finding 只講一件事
+- 必填：id / severity / file / rule / evidence / fix
+- 沒有證據就不要開 finding
+
+## Summary
+
+- totals: `P0=N, P1=N, P2=N`
+- decision: `APPROVED | REJECTED`
+
+> **APPROVED** 條件：P0=0 且 P1=0 且 P2=0。有任何 finding 就是 REJECTED。
+
+> **收斂模式補充規則**：
+> - 如果前輪修正已解決某問題，不要重複提出。
+> - 每個 finding 必須有具體 evidence，不可模糊形容。
+> - 本次為收斂模式審查，不提供 codebase 檔案。請基於 spec 內部一致性和技術合規性審查。
+
+## 待審查 Spec
+
 # S1 Dev Spec: Claude Session Manager (CSM)
 
 > **階段**: S1 技術分析
@@ -238,7 +438,7 @@ sequenceDiagram
         TUI-->>U: 顯示確認提示
     else Session 已 crash (E2)
         CP->>CLI: stdin.write raises BrokenPipeError
-        CP->>SM: session_manager.get_session(id).status checked → DEAD
+        CP->>SM: notify_crash(session_id)
         SM->>SS: 更新 status=DEAD
         SS-->>TUI: reactive 通知
         TUI-->>U: 顯示 Crash Alert
@@ -298,13 +498,9 @@ class SessionManager:
 
 ```python
 class CommandDispatcher:
-    def __init__(self, session_manager: SessionManager) -> None:
-        """建構子注入 SessionManager，用於呼叫 send_command 和讀取 session 狀態。"""
-
     async def enqueue(self, session_id: str, command: str) -> None:
-        """將指令加入 session 的 FIFO 佇列。consumer task 透過 session_manager.send_command() 執行。
-        若 send_command 發現 session 已 DEAD，consumer 捕捉例外並停止消費。
-        Raises: SessionNotFoundError, SessionDeadError, QueueFullError"""
+        """將指令加入 session 的 FIFO 佇列。
+        Raises: SessionNotFoundError, SessionDeadError"""
 ```
 
 **OutputParser**
@@ -313,8 +509,8 @@ class CommandDispatcher:
 class OutputParser:
     def parse_line(self, raw_line: str) -> ParsedEvent | None:
         """解析一行 stdout 輸出。
-        回傳 ParsedEvent (sop_stage | token_update | text)
-        或 None（無法辨識的行）。WAIT 狀態判定由 SessionManager 負責。"""
+        回傳 ParsedEvent (sop_stage_change | token_update | status_change | plain_text)
+        或 None（無法辨識的行）。"""
 ```
 
 ### 4.2 資料模型
@@ -335,12 +531,9 @@ class SessionState:
     last_activity: datetime      # 最後一次 stdout 輸出時間
     tokens_in: int               # 累計 input tokens
     tokens_out: int              # 累計 output tokens
-    cost_usd: float              # 累計成本（美元）— 單一事實來源
+    cost_usd: float              # 累計成本（美元）
     # 注意: output_buffer (RingBuffer) 由 OutputBufferStore 獨立管理，不嵌入 SessionState
     # 這保持 SessionState 為純資料 dataclass（可序列化、可 hash）
-    # 成本資料流向: OutputParser 解析 token → SessionState 更新 → CostAggregator.update() 同步
-    # SessionState 是個別成本的事實來源，CostAggregator 只做彙總（讀取 SessionState 後寫入自身快取）
-    # TUI 列表讀 SessionState.cost_usd，狀態列讀 CostAggregator.get_total()
 
 class OutputBufferStore:
     """獨立管理每個 session 的輸出緩衝區。"""
@@ -358,15 +551,8 @@ class SessionStatus(Enum):
 
 @dataclass
 class ParsedEvent:
-    event_type: str              # sop_stage | token_update | text（WAIT 狀態判定由 SessionManager 負責，不在 ParsedEvent 中）
+    event_type: str              # sop_stage | token_update | status_change | text
     data: dict                   # 事件資料（依 event_type 不同）
-
-@dataclass
-class CostSummary:
-    total_tokens_in: int = 0
-    total_tokens_out: int = 0
-    total_cost_usd: float = 0.0
-    session_count: int = 0
 
 class RingBuffer:
     """固定容量環形緩衝區，儲存最近 N 行文字。"""
@@ -412,8 +598,7 @@ class RingBuffer:
   - [ ] `src/csm/` 目錄結構完整（core/, models/, widgets/, utils/ 子目錄含 `__init__.py`）
   - [ ] `pip install -e .` 成功
   - [ ] `python -m csm` 可執行（即使只顯示空畫面）
-  - [ ] pyproject.toml 包含 pytest 為 dev dependency，`python -m pytest` 可在專案根目錄執行
-- **驗收方式**: `pip install -e ".[dev]"` + `csm` 指令可啟動 + `python -m pytest` 可執行
+- **驗收方式**: `pip install -e .` + `csm` 指令可啟動
 
 #### Task #1: Wave 0 — Claude CLI PIPE 模式驗證
 - **類型**: 探索驗證
@@ -465,7 +650,7 @@ class RingBuffer:
 - **DoD**:
   - [ ] `strip_ansi` 函式實作完成
   - [ ] 處理 CR 覆寫：`"hello\rworld"` → `"world"`
-  - [ ] 單元測試覆蓋至少 3 種 ANSI pattern：SGR 顏色 (`\x1b[31m`)、CSI cursor move (`\x1b[2J`)、OSC title set (`\x1b]0;title\x07`)
+  - [ ] 單元測試覆蓋常見 ANSI escape pattern
 - **驗收方式**: 單元測試全部通過
 
 #### Task #4: Session 資料模型
@@ -505,21 +690,22 @@ class RingBuffer:
 - **描述**: 實作 `src/csm/core/output_parser.py`。基於 Wave 0 驗證結果設計解析策略。**初版解析規則（待 Wave 0 修正）**：
   - **SOP 階段**: 正則匹配 `S[0-7]` 或 `Launching skill: s[0-7]` 等關鍵字
   - **Token 用量**: 匹配 `Token usage:` 或 `total_cost` 等模式
-  - **Session 狀態判定**：由 SessionManager 的 stdout reader task 負責（非 OutputParser）。OutputParser 只解析單行內容，不做計時。SessionManager 在最後一次 stdout 輸出後 5 秒無新輸出時，將 session 標記為 WAIT。
+  - **Session 狀態**: 無輸出超過 N 秒 → WAIT；有持續輸出 → RUN；process exit → DONE/DEAD
+  - 狀態機管理當前解析上下文
   - 每行先經過 `strip_ansi`，再餵給 regex 匹配，結果封裝為 `ParsedEvent`
 - **DoD**:
   - [ ] `OutputParser.parse_line` 實作完成
   - [ ] 狀態機正確追蹤 SOP 階段轉換
-  - [ ] 單元測試使用 Wave 0 捕獲的真實輸出樣本（若 Wave 0 為 NO-GO，改用備案架構的 stream-json 模擬輸出作為測試基準）
+  - [ ] 單元測試使用 Wave 0 捕獲的真實輸出樣本
   - [ ] 對無法辨識的行回傳 plain_text 事件（不丟棄）
-- **驗收方式**: 用 Wave 0 樣本資料（或備案樣本）通過單元測試
+- **驗收方式**: 用 Wave 0 樣本資料通過單元測試
 
 #### Task #7: SessionManager 實作
 - **類型**: 核心邏輯
 - **FA**: FA-A
 - **複雜度**: L
 - **Agent**: python-expert
-- **依賴**: Task #4, #6（介面定義即可，不需 #6 完整實作；可先用 stub OutputParser 並行開發）
+- **依賴**: Task #4, #6
 - **描述**: 實作 `src/csm/core/session_manager.py`。核心職責：
   1. **spawn**: `asyncio.create_subprocess_exec` 啟動 claude CLI，建構正確的命令列參數（`claude --resume ID --model X --permission-mode Y` 等）。啟動 stdout reader asyncio.Task。查重邏輯（E5）。
   2. **stop**: `process.terminate()` → `asyncio.wait_for(process.wait(), timeout=5)` → timeout 則 `process.kill()`。清理 reader task。
@@ -533,7 +719,6 @@ class RingBuffer:
   - [ ] stdout reader task 正確啟動和清理
   - [ ] Windows 環境下 terminate 行為正確
   - [ ] 自動化測試（mock subprocess）覆蓋：spawn 成功路徑、DirectoryNotFoundError、DuplicateSessionError、stop terminate→timeout→kill 路徑、crash detection 觸發 DEAD
-  - [ ] WAIT 狀態判定：stdout reader 在最後輸出後 5 秒無新輸出時標記 WAIT（含對應測試）
 - **驗收方式**: 自動化測試通過 + 手動啟動/停止/重啟 claude session 成功
 
 #### Task #8: CommandDispatcher 實作
@@ -548,8 +733,7 @@ class RingBuffer:
   - [ ] consumer task 逐一寫入 stdin
   - [ ] BrokenPipeError 正確捕捉並觸發 crash 流程
   - [ ] session stop/restart 時 consumer task 正確清理，Queue 清空（避免舊指令送入新 session）
-  - [ ] 自動化測試覆蓋：enqueue 成功、QueueFullError、FIFO 順序、cleanup 清空佇列、BrokenPipeError 處理
-- **驗收方式**: 自動化測試通過 + 手動對執行中的 session 發送指令驗證
+- **驗收方式**: 對執行中的 session 發送指令，觀察 claude 回應
 
 #### Task #9: Session 列表 Widget
 - **類型**: TUI
@@ -623,7 +807,6 @@ class RingBuffer:
   - [ ] 退出時所有 session 正確停止
   - [ ] 狀態列即時更新總成本
   - [ ] SESSION_LIMIT 超過時顯示警告（E6）
-  - [ ] QueueFullError 捕捉並顯示 notify 警告（「指令佇列已滿，請稍後再試」）
 - **驗收方式**: 啟動工具 → 新增 session → 觀察狀態 → 發送指令 → 停止 session → 退出
 
 #### Task #13: 整合測試 + 手動測試計畫
@@ -635,7 +818,7 @@ class RingBuffer:
 - **描述**: 撰寫整合測試腳本和手動測試清單。整合測試用 Textual 的 `app.run_test()` pilot API 模擬鍵盤操作。手動測試清單覆蓋所有成功標準（S0 第 5 節）和六維度例外（E1-E6）。
 - **DoD**:
   - [ ] 整合測試腳本可執行
-  - [ ] 手動測試清單覆蓋 10 個驗收標準（AC-1 至 AC-10）
+  - [ ] 手動測試清單覆蓋 7 個成功標準
   - [ ] E1-E6 例外都有測試場景
 - **驗收方式**: 整合測試通過 + 手動測試清單審閱
 
@@ -730,65 +913,3 @@ class RingBuffer:
 
 - Greenfield 專案，無回歸風險。
 - 外部依賴風險：Textual 和 claude CLI 的版本更新可能影響行為，建議在 pyproject.toml 中固定 Textual 版本範圍。
-
----
-
-## SDD Context
-
-```json
-{
-  "sdd_context": {
-    "stages": {
-      "s1": {
-        "status": "completed",
-        "agents": ["codebase-explorer", "architect"],
-        "completed_at": "2026-03-15T01:00:00Z",
-        "output": {
-          "completed_phases": [1, 2, 3],
-          "dev_spec_path": "dev/specs/claude-session-manager/s1_dev_spec.md",
-          "tasks": [
-            {"id": "T0", "name": "專案腳手架", "fa": "全域", "complexity": "S"},
-            {"id": "T1", "name": "Wave 0: Claude CLI PIPE 模式驗證", "fa": "FA-D", "complexity": "M"},
-            {"id": "T2", "name": "RingBuffer 實作", "fa": "FA-D", "complexity": "S"},
-            {"id": "T3", "name": "ANSI escape 清除工具", "fa": "FA-D", "complexity": "S"},
-            {"id": "T4", "name": "Session 資料模型", "fa": "FA-A", "complexity": "S"},
-            {"id": "T5", "name": "Cost 追蹤模型", "fa": "FA-B", "complexity": "S"},
-            {"id": "T6", "name": "OutputParser 實作", "fa": "FA-D", "complexity": "L"},
-            {"id": "T7", "name": "SessionManager 實作", "fa": "FA-A", "complexity": "L"},
-            {"id": "T8", "name": "CommandDispatcher 實作", "fa": "FA-C", "complexity": "M"},
-            {"id": "T9", "name": "Session 列表 Widget", "fa": "FA-B", "complexity": "M"},
-            {"id": "T10", "name": "詳情面板 Widget", "fa": "FA-B", "complexity": "M"},
-            {"id": "T11", "name": "Modal 對話框", "fa": "FA-B/A/C", "complexity": "M"},
-            {"id": "T12", "name": "Textual App 主入口", "fa": "FA-B", "complexity": "L"},
-            {"id": "T13", "name": "整合測試", "fa": "全域", "complexity": "M"}
-          ],
-          "acceptance_criteria": [
-            "AC-1: 啟動新 session (P0)",
-            "AC-2: 停止 session (P0)",
-            "AC-3: 重啟 session (P0)",
-            "AC-4: Dashboard 狀態顯示 (P0)",
-            "AC-5: 發送指令 (P0)",
-            "AC-6: SOP 階段解析 (P1)",
-            "AC-7: Token 成本追蹤 (P1)",
-            "AC-8: Crash 偵測 (P0)",
-            "AC-9: 篩選排序 (P2)",
-            "AC-10: Resume session (P1)"
-          ],
-          "assumptions": [
-            "claude CLI 在 PIPE 模式下可正常啟動並輸出（需 Wave 0 驗證）",
-            "Textual 在 Windows Terminal 環境下渲染正常",
-            "claude CLI 的輸出包含可解析的 SOP 階段和 token 資訊"
-          ],
-          "solution_summary": "Python TUI (Textual) + asyncio subprocess 管理 + 正則/狀態機輸出解析",
-          "tech_debt": [
-            "OutputParser 解析規則需在 Wave 0 後根據真實輸出更新",
-            "Token 成本計算依賴 claude CLI 輸出格式，格式變動需更新 parser",
-            "系統資源監控（E6）降級為 session 數量警告（psutil 為可選依賴）"
-          ],
-          "regression_risks": []
-        }
-      }
-    }
-  }
-}
-```
