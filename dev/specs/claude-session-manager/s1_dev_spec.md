@@ -20,12 +20,12 @@
 本專案為 greenfield Python 應用，採用 `src/csm/` layout。核心架構分三層：
 
 1. **TUI Layer**（Textual App）：Dashboard 主畫面含 session 列表、詳情面板、狀態列、Modal 對話框，透過 Textual reactive 機制刷新 UI。
-2. **Core Layer**（asyncio）：SessionManager 管理 subprocess 生命週期、OutputParser 以正則 + 狀態機解析 stdout、CommandDispatcher 透過 asyncio.Queue + stdin.write 派送指令。
-3. **State Layer**（in-memory）：Session dataclass 儲存結構化狀態、CostAggregator 彙總成本。
+2. **Core Layer**（asyncio）：SessionManager 以 `claude -p --resume --output-format stream-json --verbose --include-partial-messages` 模式執行每次互動（短期 process，非長期 subprocess）。OutputParser 解析 JSON lines（非正則）。CommandDispatcher 透過 asyncio.Queue 序列化指令，每個指令觸發一次 `send_command`（spawn 獨立 process）。
+3. **State Layer**（in-memory + 持久化）：Session dataclass 儲存結構化狀態、CostAggregator 彙總成本。SessionState 可序列化到 `~/.csm/sessions.json` 實現跨重啟持久化。
 
-所有 Claude Code session 透過 `asyncio.create_subprocess_exec` 啟動互動式 subprocess（stdin/stdout/stderr PIPE），每個 session 對應一個 asyncio Task 持續讀取 stdout 並餵給 OutputParser。
+每次互動（spawn/send_command）是一個獨立的 `claude -p --resume SESSION_ID` 呼叫，process 完成後退出。SessionManager 以 `readline()` loop 逐行讀取 stream-json stdout，即時更新 SessionState 和 RingBuffer。
 
-**關鍵限制**：`--output-format stream-json` 僅在 `--print`（單次問答）模式下可用，互動式多輪 session 必須解析原始終端輸出。因此 OutputParser 的解析規則需要 Wave 0 驗證 claude CLI 在 PIPE 模式下的實際輸出格式。
+**Wave 0 驗證結論**：互動式 subprocess 不可行（claude CLI 偵測 isatty 而不輸出到 PIPE stdout）。改用 `--print --output-format stream-json` 模式，每次互動獨立 spawn process，取得結構化 JSON 輸出（含精確 cost/token 數據）。詳見 `docs/wave0_cli_findings.md`。
 
 ---
 

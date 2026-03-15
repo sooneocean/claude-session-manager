@@ -49,7 +49,7 @@ class SessionList(DataTable):
         self._all_sessions: list[SessionState] = []
 
     def on_mount(self) -> None:
-        self.add_columns("#", "Directory", "Stage", "Status", "Cost($)")
+        self.add_columns("#", "Name", "Stage", "Status", "Cost($)")
         self.cursor_type = "row"
 
     def update_sessions(self, sessions: list[SessionState]) -> None:
@@ -75,8 +75,8 @@ class SessionList(DataTable):
                 status_text, _color = self.STATUS_DISPLAY.get(s.status, ("?", "white"))
                 stage = s.sop_stage or "--"
                 cost = f"{s.cost_usd:.2f}"
-                dir_name = os.path.basename(s.config.cwd) or s.config.cwd
-                self.add_row(str(i), dir_name, stage, status_text, cost, key=s.session_id)
+                display_name = s.config.name or os.path.basename(s.config.cwd) or s.config.cwd
+                self.add_row(str(i), display_name, stage, status_text, cost, key=s.session_id)
             # Restore cursor
             if self.row_count > 0:
                 self.move_cursor(row=min(current_cursor_row, self.row_count - 1))
@@ -86,11 +86,11 @@ class SessionList(DataTable):
                 status_text, _color = self.STATUS_DISPLAY.get(s.status, ("?", "white"))
                 stage = s.sop_stage or "--"
                 cost = f"{s.cost_usd:.2f}"
-                dir_name = os.path.basename(s.config.cwd) or s.config.cwd
+                display_name = s.config.name or os.path.basename(s.config.cwd) or s.config.cwd
                 row_key = s.session_id
                 try:
                     self.update_cell(row_key, "#", str(i + 1))
-                    self.update_cell(row_key, "Directory", dir_name)
+                    self.update_cell(row_key, "Name", display_name)
                     self.update_cell(row_key, "Stage", stage)
                     self.update_cell(row_key, "Status", status_text)
                     self.update_cell(row_key, "Cost($)", cost)

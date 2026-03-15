@@ -5,6 +5,23 @@ All notable changes to Claude Session Manager (CSM) will be documented in this f
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.5.0] - 2026-03-15
+
+### Added
+- Session naming support (`--name` flag, display in dashboard)
+- README.md with install instructions, architecture, and usage guide
+
+### Changed
+- dev_spec updated to match actual implementation (stream-json architecture)
+- SessionList column "Directory" renamed to "Name" (shows name or dir basename)
+- NewSessionModal now includes name input field
+
+## [v0.4.0] - 2026-03-15
+
+### Added
+- `/iterate` skill for automated product iteration (scan → propose → autopilot → release)
+- CHANGELOG.md and iterate-history.json
+
 ## [v0.3.0] - 2026-03-15
 
 ### Added

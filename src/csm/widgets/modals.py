@@ -28,6 +28,8 @@ class NewSessionModal(ModalScreen):
             yield Static("New Session", classes="title")
             yield Static("Working Directory:")
             yield Input(placeholder="/path/to/project", id="cwd_input")
+            yield Static("Session Name (optional):")
+            yield Input(placeholder="my-project", id="name_input")
             yield Static("Resume ID (optional):")
             yield Input(placeholder="session-id", id="resume_input")
             yield Static("Model (optional):")
@@ -39,10 +41,11 @@ class NewSessionModal(ModalScreen):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "create_btn":
             cwd = self.query_one("#cwd_input", Input).value.strip()
+            name = self.query_one("#name_input", Input).value.strip() or None
             resume = self.query_one("#resume_input", Input).value.strip() or None
             model = self.query_one("#model_input", Input).value.strip() or None
             if cwd:
-                self.dismiss(SessionConfig(cwd=cwd, resume_id=resume, model=model))
+                self.dismiss(SessionConfig(cwd=cwd, name=name, resume_id=resume, model=model))
             # If cwd is empty, stay open (do nothing)
         else:
             self.dismiss(None)

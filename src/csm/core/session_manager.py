@@ -247,6 +247,9 @@ class SessionManager:
         if state.config.max_budget_usd is not None:
             cmd.extend(["--max-budget-usd", str(state.config.max_budget_usd)])
 
+        if state.config.name:
+            cmd.extend(["--name", state.config.name])
+
         cmd.append(prompt)
 
         proc = await asyncio.create_subprocess_exec(
