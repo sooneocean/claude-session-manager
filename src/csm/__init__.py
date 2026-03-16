@@ -1,3 +1,3 @@
 """Claude Session Manager - TUI tool for managing multiple Claude Code sessions."""
 
-__version__ = "0.9.1"
+__version__ = "0.9.2"

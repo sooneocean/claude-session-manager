@@ -57,6 +57,7 @@ class SessionManager:
         self._buffer_store = OutputBufferStore()
         # Maps session_id → currently-executing subprocess (short-lived).
         self._running_processes: dict[str, asyncio.subprocess.Process] = {}
+        self._background_tasks: dict[str, asyncio.Task] = {}
 
     # ------------------------------------------------------------------
     # Properties
@@ -128,24 +129,25 @@ class SessionManager:
 
         state.status = SessionStatus.RUN
 
-
-        try:
-            result = await self._run_claude(state, initial_prompt)
-            if result is not None:
-                state.status = SessionStatus.WAIT
-            else:
-                # Retry once before marking DEAD
+        # Run initial claude call in background task (non-blocking)
+        async def _background_spawn():
+            try:
                 result = await self._run_claude(state, initial_prompt)
-                state.status = SessionStatus.WAIT if result is not None else SessionStatus.DEAD
-        except Exception:
-            state.status = SessionStatus.DEAD
-            raise
+                if result is not None:
+                    state.status = SessionStatus.WAIT
+                else:
+                    result = await self._run_claude(state, initial_prompt)
+                    state.status = SessionStatus.WAIT if result is not None else SessionStatus.DEAD
+            except Exception:
+                state.status = SessionStatus.DEAD
 
+        import asyncio
+        self._background_tasks[state.session_id] = asyncio.create_task(_background_spawn())
 
         return state.session_id
 
-    async def send_command(self, session_id: str, command: str) -> str | None:
-        """Send *command* to *session_id*.  Returns result text or None on error.
+    async def send_command(self, session_id: str, command: str) -> None:
+        """Send *command* to *session_id*. Runs in background (non-blocking).
 
         Raises:
             SessionNotFoundError: session does not exist.
@@ -160,21 +162,20 @@ class SessionManager:
 
         state.status = SessionStatus.RUN
 
+        async def _background_command():
+            try:
+                result = await self._run_claude(state, command)
+                if result is not None:
+                    state.status = SessionStatus.WAIT
+                    await self._auto_compact_if_needed(state)
+                else:
+                    result = await self._run_claude(state, command)
+                    state.status = SessionStatus.WAIT if result is not None else SessionStatus.DEAD
+            except Exception:
+                state.status = SessionStatus.DEAD
 
-        try:
-            result = await self._run_claude(state, command)
-            if result is not None:
-                state.status = SessionStatus.WAIT
-                # Auto-compact check
-                await self._auto_compact_if_needed(state)
-                return result
-            # Retry once
-            result = await self._run_claude(state, command)
-            state.status = SessionStatus.WAIT if result is not None else SessionStatus.DEAD
-            return result
-        except Exception:
-            state.status = SessionStatus.DEAD
-            return None
+        import asyncio
+        self._background_tasks[session_id] = asyncio.create_task(_background_command())
 
     async def _auto_compact_if_needed(self, state: SessionState) -> None:
         """Send /compact if session token usage exceeds threshold."""
