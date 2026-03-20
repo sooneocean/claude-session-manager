@@ -248,8 +248,16 @@ class SessionManager:
     def get_session(self, session_id: str) -> SessionState | None:
         return self._sessions.get(session_id)
 
+    async def flush(self) -> None:
+        """Await all pending background tasks. Useful for testing."""
+        tasks = list(self._background_tasks.values())
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        self._background_tasks.clear()
+
     async def shutdown(self) -> None:
         """Gracefully stop all sessions."""
+        await self.flush()
         for sid in list(self._sessions.keys()):
             try:
                 await self.stop(sid)

@@ -1,0 +1,24 @@
+{
+  "version": "3.0.0",
+  "feature": "fix-async-test-regression",
+  "spec_mode": "quick",
+  "work_type": "bugfix",
+  "status": "in_progress",
+  "current_stage": "s0",
+  "execution_mode": "autopilot",
+  "stages": {
+    "s0": {
+      "status": "done",
+      "output": {
+        "work_type": "bugfix",
+        "requirement": "Fix 19 test regressions caused by v0.9.2 non-blocking spawn/send_command refactor",
+        "goal": "All 150 tests pass on Windows and Unix",
+        "pain_points": ["19 tests fail because they check state before background tasks complete"],
+        "success_criteria": ["150/150 tests pass", "No production behavior change"],
+        "scope_in": ["SessionManager.flush() method", "Test files adaptation"],
+        "scope_out": ["spawn/send_command non-blocking behavior itself"],
+        "constraints": ["Must not change async API semantics"]
+      }
+    }
+  }
+}

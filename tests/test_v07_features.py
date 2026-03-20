@@ -43,6 +43,8 @@ class TestRetryMechanism:
 
         manager = SessionManager()
         sid = await manager.spawn(SessionConfig(cwd="/test"))
+        await manager.flush()
+
         session = manager.get_session(sid)
         # Should succeed after retry
         assert session.status == SessionStatus.WAIT
@@ -60,6 +62,8 @@ class TestRetryMechanism:
 
         manager = SessionManager()
         sid = await manager.spawn(SessionConfig(cwd="/test"))
+        await manager.flush()
+
         session = manager.get_session(sid)
         assert session.status == SessionStatus.DEAD
         await manager.shutdown()
@@ -115,7 +119,6 @@ class TestFilterSort:
         sl = SessionList()
         sl._all_sessions = self._make_sessions()
         assert sl._filter_status is None
-        # Cycle directly without triggering update_sessions (no columns in bare widget)
         cycle = [None, SessionStatus.RUN, SessionStatus.WAIT, SessionStatus.DEAD, SessionStatus.DONE]
         sl._filter_status = None
         idx = cycle.index(sl._filter_status)
@@ -126,7 +129,6 @@ class TestFilterSort:
     def test_cycle_sort(self):
         sl = SessionList()
         assert sl._sort_key == SortKey.NONE
-        # Cycle directly
         cycle = [SortKey.NONE, SortKey.COST, SortKey.STATUS, SortKey.STAGE]
         idx = cycle.index(sl._sort_key)
         next_s = cycle[(idx + 1) % len(cycle)]

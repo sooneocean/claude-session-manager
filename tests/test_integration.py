@@ -45,7 +45,6 @@ class TestFullLifecycle:
     @patch("csm.core.session_manager.os.path.isdir", return_value=True)
     async def test_spawn_command_stop(self, mock_isdir, mock_exec):
         """Full lifecycle: spawn → send command → stop."""
-        # Setup mocks
         mock_exec.side_effect = [
             make_mock_process([MOCK_INIT, MOCK_RESULT]),  # spawn
             make_mock_process([MOCK_INIT, MOCK_RESULT]),  # send_command
@@ -58,6 +57,7 @@ class TestFullLifecycle:
         config = SessionConfig(cwd="/test/project")
         sid = await manager.spawn(config)
         dispatcher.register_session(sid)
+        await manager.flush()
 
         session = manager.get_session(sid)
         assert session is not None
@@ -66,8 +66,8 @@ class TestFullLifecycle:
         assert session.cost_usd == 0.12
 
         # Send command
-        result = await manager.send_command(sid, "do something")
-        assert result == "Integration test response"
+        await manager.send_command(sid, "do something")
+        await manager.flush()
         assert session.status == SessionStatus.WAIT
 
         # Stop
@@ -93,11 +93,13 @@ class TestFullLifecycle:
         # Spawn (will crash)
         config = SessionConfig(cwd="/test/project")
         sid = await manager.spawn(config)
+        await manager.flush()
         session = manager.get_session(sid)
         assert session.status == SessionStatus.DEAD
 
         # Restart
         new_sid = await manager.restart(sid)
+        await manager.flush()
         new_session = manager.get_session(new_sid)
         assert new_session is not None
         assert new_session.status == SessionStatus.WAIT
@@ -127,6 +129,7 @@ class TestCostTracking:
 
         sid_a = await manager.spawn(SessionConfig(cwd="/project-a"))
         sid_b = await manager.spawn(SessionConfig(cwd="/project-b"))
+        await manager.flush()
 
         total = manager.cost_aggregator.get_total()
         assert total.total_cost_usd == pytest.approx(3.50, abs=0.01)
@@ -146,6 +149,7 @@ class TestSOPDetection:
 
         manager = SessionManager()
         sid = await manager.spawn(SessionConfig(cwd="/test"))
+        await manager.flush()
 
         session = manager.get_session(sid)
         assert session.sop_stage == "S4"
@@ -164,6 +168,7 @@ class TestOutputBufferIntegration:
 
         manager = SessionManager()
         sid = await manager.spawn(SessionConfig(cwd="/test"))
+        await manager.flush()
 
         buf = manager.buffer_store.get(sid)
         assert buf is not None
@@ -194,6 +199,7 @@ class TestMultipleSessions:
         for i in range(3):
             sid = await manager.spawn(SessionConfig(cwd=f"/project-{i}"))
             sids.append(sid)
+        await manager.flush()
 
         sessions = manager.get_sessions()
         assert len(sessions) == 3
@@ -226,15 +232,16 @@ class TestCommandDispatcherIntegration:
         dispatcher = CommandDispatcher(manager)
 
         sid = await manager.spawn(SessionConfig(cwd="/test"))
+        await manager.flush()
         dispatcher.register_session(sid)
 
         await dispatcher.enqueue(sid, "test command")
         # Give consumer task time to process
         await asyncio.sleep(0.5)
+        await manager.flush()
 
         session = manager.get_session(sid)
         assert session is not None
-        # Session should have processed the command (back to WAIT after RUN)
 
         dispatcher.cleanup_session(sid)
         await dispatcher.shutdown()

@@ -31,14 +31,18 @@ class TestAutoCompact:
     @patch("csm.core.session_manager.os.path.isdir", return_value=True)
     async def test_no_compact_below_threshold(self, mock_isdir, mock_exec):
         """Normal token usage should not trigger compact."""
-        mock_exec.return_value = make_mock_process([MOCK_INIT, MOCK_RESULT])
+        mock_exec.side_effect = [
+            make_mock_process([MOCK_INIT, MOCK_RESULT]),  # spawn
+            make_mock_process([MOCK_INIT, MOCK_RESULT]),  # send_command
+        ]
 
         manager = SessionManager()
         sid = await manager.spawn(SessionConfig(cwd="/test"))
+        await manager.flush()
 
         # Send a command with low tokens
-        mock_exec.return_value = make_mock_process([MOCK_INIT, MOCK_RESULT])
         await manager.send_command(sid, "hello")
+        await manager.flush()
 
         session = manager.get_session(sid)
         # tokens should be small, no compact triggered
@@ -60,7 +64,10 @@ class TestAutoCompact:
 
         manager = SessionManager()
         sid = await manager.spawn(SessionConfig(cwd="/test"))
+        await manager.flush()
+
         await manager.send_command(sid, "big task")
+        await manager.flush()
 
         session = manager.get_session(sid)
         # After compact, tokens should be reset

@@ -102,8 +102,9 @@ class TestSpawn:
     @pytest.mark.asyncio
     async def test_spawn_success(self, manager, config):
         proc = make_success_process()
-        with patch("asyncio.create_subprocess_exec", return_value=proc):
+        with patch("csm.core.session_manager.asyncio.create_subprocess_exec", return_value=proc):
             sid = await manager.spawn(config)
+            await manager.flush()
 
         assert sid is not None
         state = manager.get_session(sid)
@@ -123,12 +124,13 @@ class TestSpawn:
     @pytest.mark.asyncio
     async def test_spawn_duplicate_session(self, manager, config):
         proc = make_success_process()
-        with patch("asyncio.create_subprocess_exec", return_value=proc):
+        with patch("csm.core.session_manager.asyncio.create_subprocess_exec", return_value=proc):
             await manager.spawn(config)
+            await manager.flush()
 
         # Same cwd, same resume_id (both None) → duplicate
         proc2 = make_success_process()
-        with patch("asyncio.create_subprocess_exec", return_value=proc2):
+        with patch("csm.core.session_manager.asyncio.create_subprocess_exec", return_value=proc2):
             with pytest.raises(DuplicateSessionError):
                 await manager.spawn(config)
 
@@ -139,9 +141,10 @@ class TestSpawn:
 
         proc1 = make_success_process()
         proc2 = make_success_process()
-        with patch("asyncio.create_subprocess_exec", side_effect=[proc1, proc2]):
+        with patch("csm.core.session_manager.asyncio.create_subprocess_exec", side_effect=[proc1, proc2]):
             sid1 = await manager.spawn(cfg1)
             sid2 = await manager.spawn(cfg2)
+            await manager.flush()
 
         assert sid1 != sid2
 
@@ -150,8 +153,9 @@ class TestSpawn:
         """Both initial attempt and retry fail → DEAD."""
         fail1 = make_failing_process()
         fail2 = make_failing_process()
-        with patch("asyncio.create_subprocess_exec", side_effect=[fail1, fail2]):
+        with patch("csm.core.session_manager.asyncio.create_subprocess_exec", side_effect=[fail1, fail2]):
             sid = await manager.spawn(config)
+            await manager.flush()
 
         state = manager.get_session(sid)
         assert state.status == SessionStatus.DEAD
@@ -159,20 +163,20 @@ class TestSpawn:
     @pytest.mark.asyncio
     async def test_spawn_session_limit(self, manager):
         """Cannot exceed SESSION_LIMIT active sessions."""
-        # Patch each spawn's subprocess
         async def do_spawn(i):
-            # Use different resume_id so no duplicate error
             cfg = SessionConfig(cwd=valid_cwd(), resume_id=str(i))
             proc = make_success_process()
-            with patch("asyncio.create_subprocess_exec", return_value=proc):
-                return await manager.spawn(cfg)
+            with patch("csm.core.session_manager.asyncio.create_subprocess_exec", return_value=proc):
+                sid = await manager.spawn(cfg)
+                await manager.flush()
+                return sid
 
         for i in range(SessionManager.SESSION_LIMIT):
             await do_spawn(i)
 
         cfg_over = SessionConfig(cwd=valid_cwd(), resume_id="over")
         proc = make_success_process()
-        with patch("asyncio.create_subprocess_exec", return_value=proc):
+        with patch("csm.core.session_manager.asyncio.create_subprocess_exec", return_value=proc):
             with pytest.raises(RuntimeError, match="Session limit"):
                 await manager.spawn(cfg_over)
 
@@ -187,8 +191,9 @@ class TestSpawn:
             captured_cmd.extend(args)
             return proc
 
-        with patch("asyncio.create_subprocess_exec", side_effect=fake_exec):
+        with patch("csm.core.session_manager.asyncio.create_subprocess_exec", side_effect=fake_exec):
             await manager.spawn(cfg)
+            await manager.flush()
 
         assert "--resume" in captured_cmd
         idx = captured_cmd.index("--resume")
@@ -199,18 +204,19 @@ class TestSendCommand:
     @pytest.mark.asyncio
     async def test_send_command_success(self, manager, config):
         proc = make_success_process()
-        with patch("asyncio.create_subprocess_exec", return_value=proc):
+        with patch("csm.core.session_manager.asyncio.create_subprocess_exec", return_value=proc):
             sid = await manager.spawn(config)
+            await manager.flush()
 
         proc2 = make_mock_process(
             [MOCK_INIT_JSON,
              '{"type":"result","total_cost_usd":0.1,"usage":{"input_tokens":20,"output_tokens":10},'
              '"result":"done","session_id":"test-sess-123"}']
         )
-        with patch("asyncio.create_subprocess_exec", return_value=proc2):
-            result = await manager.send_command(sid, "do something")
+        with patch("csm.core.session_manager.asyncio.create_subprocess_exec", return_value=proc2):
+            await manager.send_command(sid, "do something")
+            await manager.flush()
 
-        assert result == "done"
         state = manager.get_session(sid)
         assert state.status == SessionStatus.WAIT
 
@@ -223,8 +229,9 @@ class TestSendCommand:
     async def test_send_command_dead_session_raises(self, manager, config):
         fail1 = make_failing_process()
         fail2 = make_failing_process()
-        with patch("asyncio.create_subprocess_exec", side_effect=[fail1, fail2]):
+        with patch("csm.core.session_manager.asyncio.create_subprocess_exec", side_effect=[fail1, fail2]):
             sid = await manager.spawn(config)
+            await manager.flush()
 
         state = manager.get_session(sid)
         assert state.status == SessionStatus.DEAD
@@ -235,14 +242,17 @@ class TestSendCommand:
     @pytest.mark.asyncio
     async def test_send_command_crash_marks_dead(self, manager, config):
         proc = make_success_process()
-        with patch("asyncio.create_subprocess_exec", return_value=proc):
+        with patch("csm.core.session_manager.asyncio.create_subprocess_exec", return_value=proc):
             sid = await manager.spawn(config)
+            await manager.flush()
 
+        # send_command: first attempt fails, retry also fails → DEAD
         proc2 = make_failing_process()
-        with patch("asyncio.create_subprocess_exec", return_value=proc2):
-            result = await manager.send_command(sid, "bad cmd")
+        proc3 = make_failing_process()
+        with patch("csm.core.session_manager.asyncio.create_subprocess_exec", side_effect=[proc2, proc3]):
+            await manager.send_command(sid, "bad cmd")
+            await manager.flush()
 
-        assert result is None
         assert manager.get_session(sid).status == SessionStatus.DEAD
 
 
@@ -250,8 +260,9 @@ class TestStop:
     @pytest.mark.asyncio
     async def test_stop_graceful(self, manager, config):
         proc = make_success_process()
-        with patch("asyncio.create_subprocess_exec", return_value=proc):
+        with patch("csm.core.session_manager.asyncio.create_subprocess_exec", return_value=proc):
             sid = await manager.spawn(config)
+            await manager.flush()
 
         await manager.stop(sid)
         assert manager.get_session(sid).status == SessionStatus.DONE
@@ -265,8 +276,9 @@ class TestStop:
     async def test_stop_terminates_running_process(self, manager, config):
         """If a process is tracked in _running_processes, stop() terminates it."""
         proc = make_success_process()
-        with patch("asyncio.create_subprocess_exec", return_value=proc):
+        with patch("csm.core.session_manager.asyncio.create_subprocess_exec", return_value=proc):
             sid = await manager.spawn(config)
+            await manager.flush()
 
         # Manually inject a "running" process to simulate mid-execution state
         fake_proc = MagicMock()
@@ -285,12 +297,14 @@ class TestRestart:
     @pytest.mark.asyncio
     async def test_restart_preserves_config(self, manager, config):
         proc = make_success_process()
-        with patch("asyncio.create_subprocess_exec", return_value=proc):
+        with patch("csm.core.session_manager.asyncio.create_subprocess_exec", return_value=proc):
             sid = await manager.spawn(config)
+            await manager.flush()
 
         proc2 = make_success_process()
-        with patch("asyncio.create_subprocess_exec", return_value=proc2):
+        with patch("csm.core.session_manager.asyncio.create_subprocess_exec", return_value=proc2):
             new_sid = await manager.restart(sid)
+            await manager.flush()
 
         assert new_sid != sid
         new_state = manager.get_session(new_sid)
@@ -314,9 +328,10 @@ class TestGetSessions:
         cfg2 = SessionConfig(cwd=valid_cwd(), resume_id="r2")
 
         proc1, proc2 = make_success_process(), make_success_process()
-        with patch("asyncio.create_subprocess_exec", side_effect=[proc1, proc2]):
+        with patch("csm.core.session_manager.asyncio.create_subprocess_exec", side_effect=[proc1, proc2]):
             await manager.spawn(cfg1)
             await manager.spawn(cfg2)
+            await manager.flush()
 
         sessions = manager.get_sessions()
         assert len(sessions) == 2
@@ -327,8 +342,9 @@ class TestCrashDetection:
     async def test_nonzero_exit_marks_dead(self, manager, config):
         fail1 = make_mock_process([MOCK_INIT_JSON, MOCK_RESULT_JSON], returncode=42)
         fail2 = make_mock_process([MOCK_INIT_JSON, MOCK_RESULT_JSON], returncode=42)
-        with patch("asyncio.create_subprocess_exec", side_effect=[fail1, fail2]):
+        with patch("csm.core.session_manager.asyncio.create_subprocess_exec", side_effect=[fail1, fail2]):
             sid = await manager.spawn(config)
+            await manager.flush()
 
         assert manager.get_session(sid).status == SessionStatus.DEAD
 
@@ -337,8 +353,9 @@ class TestBufferIntegration:
     @pytest.mark.asyncio
     async def test_result_text_appended_to_buffer(self, manager, config):
         proc = make_success_process()
-        with patch("asyncio.create_subprocess_exec", return_value=proc):
+        with patch("csm.core.session_manager.asyncio.create_subprocess_exec", return_value=proc):
             sid = await manager.spawn(config)
+            await manager.flush()
 
         buf = manager.buffer_store.get(sid)
         assert buf is not None
@@ -353,9 +370,10 @@ class TestShutdown:
         cfg2 = SessionConfig(cwd=valid_cwd(), resume_id="r2")
 
         proc1, proc2 = make_success_process(), make_success_process()
-        with patch("asyncio.create_subprocess_exec", side_effect=[proc1, proc2]):
+        with patch("csm.core.session_manager.asyncio.create_subprocess_exec", side_effect=[proc1, proc2]):
             sid1 = await manager.spawn(cfg1)
             sid2 = await manager.spawn(cfg2)
+            await manager.flush()
 
         await manager.shutdown()
 
