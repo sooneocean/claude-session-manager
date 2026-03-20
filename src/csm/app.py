@@ -52,6 +52,8 @@ class CSMApp(App):
         Binding("enter", "send_command", "Command"),
         Binding("q", "quit_app", "Quit"),
         Binding("b", "broadcast_command", "Broadcast"),
+        Binding("X", "stop_all", "Stop All", show=False),
+        Binding("D", "delete_all_done", "Delete Done", show=False),
         Binding("slash", "filter_sessions", "Filter"),
         Binding("s", "sort_sessions", "Sort"),
         Binding("h", "show_help", "Help"),
@@ -344,6 +346,47 @@ class CSMApp(App):
             except Exception:
                 pass
         self.notify(f"Broadcast sent to {sent}/{len(wait_sessions)} sessions")
+
+    def action_stop_all(self) -> None:
+        """Stop all active sessions."""
+        self._do_stop_all()
+
+    @work
+    async def _do_stop_all(self) -> None:
+        active = [
+            s for s in self._session_manager.get_sessions()
+            if s.status not in (SessionStatus.DONE, SessionStatus.DEAD)
+        ]
+        if not active:
+            self.notify("No active sessions", severity="warning")
+            return
+        for s in active:
+            self._dispatcher.cleanup_session(s.session_id)
+            await self._session_manager.stop(s.session_id)
+        self._refresh_display()
+        self.notify(f"Stopped {len(active)} sessions")
+
+    def action_delete_all_done(self) -> None:
+        """Delete all DONE/DEAD sessions."""
+        self._do_delete_all_done()
+
+    @work
+    async def _do_delete_all_done(self) -> None:
+        removable = [
+            s for s in self._session_manager.get_sessions()
+            if s.status in (SessionStatus.DONE, SessionStatus.DEAD)
+        ]
+        if not removable:
+            self.notify("No DONE/DEAD sessions to clean", severity="warning")
+            return
+        for s in removable:
+            self._dispatcher.cleanup_session(s.session_id)
+            await self._session_manager.remove(s.session_id)
+        if self._selected_session_id and not self._session_manager.get_session(self._selected_session_id):
+            self._selected_session_id = None
+            self.query_one("#detail_panel", DetailPanel).show_placeholder()
+        self._refresh_display()
+        self.notify(f"Cleaned {len(removable)} sessions")
 
     def action_show_help(self) -> None:
         self.push_screen(HelpModal())
