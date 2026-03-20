@@ -22,7 +22,7 @@ from csm.core.session_manager import (
 )
 from csm.core.command_dispatcher import CommandDispatcher, QueueFullError, SessionDeadError
 from csm.core.persistence import save_sessions, load_sessions
-from csm.models.session import SessionStatus
+from csm.models.session import SessionConfig, SessionStatus
 from csm.widgets.session_list import SessionList, SortKey
 from csm.widgets.detail_panel import DetailPanel
 from csm.widgets.modals import (
@@ -48,6 +48,7 @@ class CSMApp(App):
         Binding("d", "delete_session", "Delete"),
         Binding("r", "restart_session", "Restart"),
         Binding("e", "export_log", "Export"),
+        Binding("c", "duplicate_session", "Clone"),
         Binding("enter", "send_command", "Command"),
         Binding("q", "quit_app", "Quit"),
         Binding("b", "broadcast_command", "Broadcast"),
@@ -256,6 +257,34 @@ class CSMApp(App):
         filepath = export_dir / f"{name}_{timestamp}.log"
         filepath.write_text("\n".join(lines), encoding="utf-8")
         self.notify(f"Exported to {filepath}")
+
+    def action_duplicate_session(self) -> None:
+        """Clone the selected session's config into a new session."""
+        self._do_duplicate_session()
+
+    @work
+    async def _do_duplicate_session(self) -> None:
+        if not self._selected_session_id:
+            self.notify("No session selected", severity="warning")
+            return
+        session = self._session_manager.get_session(self._selected_session_id)
+        if not session:
+            return
+        # Create new config without resume_id (fresh session, same dir/model/etc)
+        new_config = SessionConfig(
+            cwd=session.config.cwd,
+            model=session.config.model,
+            permission_mode=session.config.permission_mode,
+            name=f"{session.config.name or os.path.basename(session.config.cwd)}-copy",
+            max_budget_usd=session.config.max_budget_usd,
+        )
+        try:
+            sid = await self._session_manager.spawn(new_config)
+            self._dispatcher.register_session(sid)
+            self._refresh_display()
+            self.notify("Session cloned")
+        except Exception as e:
+            self.notify(str(e), severity="error")
 
     def action_restart_session(self) -> None:
         self._do_restart_session()
