@@ -1,7 +1,9 @@
 """SessionList widget - DataTable showing all sessions. T9 + v2 refactor"""
 import os
+from datetime import datetime
 from enum import Enum
 
+from rich.text import Text
 from textual.widgets import DataTable
 from textual.message import Message
 
@@ -49,8 +51,49 @@ class SessionList(DataTable):
         self._all_sessions: list[SessionState] = []
 
     def on_mount(self) -> None:
-        self.add_columns("#", "Name", "Stage", "Status", "Cost($)")
+        self.add_columns("#", "Name", "Status", "Stage", "Cost($)", "Tokens", "Activity")
         self.cursor_type = "row"
+
+    @staticmethod
+    def _format_status(status: SessionStatus) -> Text:
+        """Return a Rich Text object with colored status label."""
+        label, color = SessionList.STATUS_DISPLAY.get(status, ("?", "white"))
+        return Text(label, style=color)
+
+    @staticmethod
+    def _format_tokens(tokens_in: int, tokens_out: int) -> str:
+        """Format token counts compactly (e.g. '12.5k/6.2k')."""
+        def _fmt(n: int) -> str:
+            if n >= 1000:
+                return f"{n / 1000:.1f}k"
+            return str(n)
+        return f"{_fmt(tokens_in)}/{_fmt(tokens_out)}"
+
+    @staticmethod
+    def _format_activity(dt: datetime) -> str:
+        """Format last activity as relative time (e.g. '2m ago')."""
+        delta = datetime.now() - dt
+        secs = int(delta.total_seconds())
+        if secs < 60:
+            return f"{secs}s ago"
+        elif secs < 3600:
+            return f"{secs // 60}m ago"
+        elif secs < 86400:
+            return f"{secs // 3600}h ago"
+        return f"{secs // 86400}d ago"
+
+    def _build_row(self, idx: int, s: SessionState) -> tuple:
+        """Build a row tuple for a session."""
+        display_name = s.config.name or os.path.basename(s.config.cwd) or s.config.cwd
+        return (
+            str(idx),
+            display_name,
+            self._format_status(s.status),
+            s.sop_stage or "--",
+            f"{s.cost_usd:.2f}",
+            self._format_tokens(s.tokens_in, s.tokens_out),
+            self._format_activity(s.last_activity),
+        )
 
     def update_sessions(self, sessions: list[SessionState]) -> None:
         """Refresh the table with current session data using differential update."""
@@ -61,7 +104,7 @@ class SessionList(DataTable):
         # Show guidance when empty (only if columns are initialized)
         if not sorted_sessions:
             if self.columns and not self.rows:
-                self.add_row("", "Press N to create first session", "", "", "", key="__empty__")
+                self.add_row("", "Press N to create first session", "", "", "", "", "", key="__empty__")
             return
         # Remove empty placeholder if sessions exist
         if self.rows:
@@ -83,28 +126,19 @@ class SessionList(DataTable):
         if desired_keys != existing_keys:
             self.clear()
             for i, s in enumerate(sorted_sessions, 1):
-                status_text, _color = self.STATUS_DISPLAY.get(s.status, ("?", "white"))
-                stage = s.sop_stage or "--"
-                cost = f"{s.cost_usd:.2f}"
-                display_name = s.config.name or os.path.basename(s.config.cwd) or s.config.cwd
-                self.add_row(str(i), display_name, stage, status_text, cost, key=s.session_id)
+                self.add_row(*self._build_row(i, s), key=s.session_id)
             # Restore cursor
             if self.row_count > 0:
                 self.move_cursor(row=min(current_cursor_row, self.row_count - 1))
         else:
             # In-place update — just update cell values without clear()
             for i, s in enumerate(sorted_sessions):
-                status_text, _color = self.STATUS_DISPLAY.get(s.status, ("?", "white"))
-                stage = s.sop_stage or "--"
-                cost = f"{s.cost_usd:.2f}"
-                display_name = s.config.name or os.path.basename(s.config.cwd) or s.config.cwd
                 row_key = s.session_id
+                row = self._build_row(i + 1, s)
+                columns = ["#", "Name", "Status", "Stage", "Cost($)", "Tokens", "Activity"]
                 try:
-                    self.update_cell(row_key, "#", str(i + 1))
-                    self.update_cell(row_key, "Name", display_name)
-                    self.update_cell(row_key, "Stage", stage)
-                    self.update_cell(row_key, "Status", status_text)
-                    self.update_cell(row_key, "Cost($)", cost)
+                    for col, val in zip(columns, row):
+                        self.update_cell(row_key, col, val)
                 except Exception:
                     pass  # Row may have been removed between check and update
 

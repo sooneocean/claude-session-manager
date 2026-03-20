@@ -33,19 +33,18 @@ async def test_new_session_modal_opens():
 
 @pytest.mark.asyncio
 async def test_new_session_modal_returns_config():
-    """Filling in cwd and clicking Create dismisses the modal."""
+    """cwd is pre-filled with cwd; clicking Create dismisses the modal."""
     app = App()
-    async with app.run_test() as pilot:
+    async with app.run_test(size=(100, 50)) as pilot:
         app.push_screen(NewSessionModal())
         await pilot.pause()
         assert isinstance(app.screen, NewSessionModal)
 
-        # Type a path into the cwd input
-        await pilot.click("#cwd_input")
-        await pilot.press("slash", "t", "m", "p")
-        await pilot.pause()
+        # cwd input should already have a default value (os.getcwd())
+        cwd_input = app.screen.query_one("#cwd_input", Input)
+        assert len(cwd_input.value) > 0
 
-        # Click Create → modal should be dismissed if cwd is non-empty
+        # Click Create → modal should be dismissed since cwd is non-empty
         await pilot.click("#create_btn")
         await pilot.pause()
 

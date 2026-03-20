@@ -1,0 +1,23 @@
+{
+  "version": "3.0.0",
+  "feature": "tui-optimization",
+  "spec_mode": "quick",
+  "work_type": "refactor",
+  "status": "in_progress",
+  "current_stage": "s1",
+  "execution_mode": "autopilot",
+  "stages": {
+    "s0": {
+      "status": "done",
+      "output": {
+        "work_type": "refactor",
+        "requirement": "8-item TUI optimization: status colors, detail header, extra columns, cwd default, permission_mode, max_budget, delete session, filter/sort indicator",
+        "goal": "Improve TUI usability and visual quality",
+        "pain_points": ["Status has no color", "Detail panel too plain", "Missing columns", "No delete session", "No filter/sort indicator"],
+        "success_criteria": ["All 8 items implemented", "150+ tests pass", "No core logic changes"],
+        "scope_in": ["UI widgets", "Modals", "Status bar", "Delete action"],
+        "scope_out": ["Backend refactoring", "textual-serve web mode"]
+      }
+    }
+  }
+}

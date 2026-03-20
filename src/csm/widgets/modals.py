@@ -1,7 +1,8 @@
 """Modal dialogs for CSM. T11"""
+import os
 from textual.app import ComposeResult
 from textual.screen import ModalScreen
-from textual.widgets import Static, Input, Button
+from textual.widgets import Static, Input, Button, Select
 from textual.containers import Vertical, Horizontal
 
 from csm.models.session import SessionConfig
@@ -16,24 +17,37 @@ class NewSessionModal(ModalScreen):
     CSS = """
     NewSessionModal { align: center middle; }
     #dialog {
-        width: 60;
+        width: 65;
         height: auto;
+        max-height: 90%;
         border: thick $primary;
         padding: 1 2;
+        overflow-y: auto;
     }
     """
 
+    PERMISSION_MODES = [
+        ("auto", "auto"),
+        ("default", "default"),
+        ("full", "full"),
+    ]
+
     def compose(self) -> ComposeResult:
+        default_cwd = os.getcwd()
         with Vertical(id="dialog"):
-            yield Static("New Session", classes="title")
+            yield Static("[bold]New Session[/bold]", classes="title")
             yield Static("Working Directory:")
-            yield Input(placeholder="/path/to/project", id="cwd_input")
+            yield Input(value=default_cwd, placeholder="/path/to/project", id="cwd_input")
             yield Static("Session Name (optional):")
             yield Input(placeholder="my-project", id="name_input")
             yield Static("Resume ID (optional):")
             yield Input(placeholder="session-id", id="resume_input")
             yield Static("Model (optional):")
             yield Input(placeholder="sonnet / opus", id="model_input")
+            yield Static("Permission Mode:")
+            yield Select(self.PERMISSION_MODES, value="auto", id="permission_select")
+            yield Static("Max Budget USD (optional):")
+            yield Input(placeholder="e.g. 5.00", id="budget_input")
             with Horizontal():
                 yield Button("Create", variant="primary", id="create_btn")
                 yield Button("Cancel", id="cancel_btn")
@@ -44,9 +58,24 @@ class NewSessionModal(ModalScreen):
             name = self.query_one("#name_input", Input).value.strip() or None
             resume = self.query_one("#resume_input", Input).value.strip() or None
             model = self.query_one("#model_input", Input).value.strip() or None
+            permission = self.query_one("#permission_select", Select).value
+            budget_str = self.query_one("#budget_input", Input).value.strip()
+            budget = None
+            if budget_str:
+                try:
+                    budget = float(budget_str)
+                except ValueError:
+                    self.notify("Invalid budget amount", severity="error")
+                    return
             if cwd:
-                self.dismiss(SessionConfig(cwd=cwd, name=name, resume_id=resume, model=model))
-            # If cwd is empty, stay open (do nothing)
+                self.dismiss(SessionConfig(
+                    cwd=cwd,
+                    name=name,
+                    resume_id=resume,
+                    model=model,
+                    permission_mode=permission,
+                    max_budget_usd=budget,
+                ))
         else:
             self.dismiss(None)
 
@@ -83,6 +112,41 @@ class ConfirmStopModal(ModalScreen):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         self.dismiss(event.button.id == "stop_btn")
+
+    def key_escape(self) -> None:
+        self.dismiss(False)
+
+
+class ConfirmDeleteModal(ModalScreen):
+    """Confirm delete session dialog.
+
+    Dismisses with True on confirm, False on cancel.
+    """
+
+    CSS = """
+    ConfirmDeleteModal { align: center middle; }
+    #dialog {
+        width: 50;
+        height: auto;
+        border: thick $error;
+        padding: 1 2;
+    }
+    """
+
+    def __init__(self, session_name: str) -> None:
+        super().__init__()
+        self._session_name = session_name
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="dialog"):
+            yield Static(f"[bold red]Delete[/bold red] session '{self._session_name}'?")
+            yield Static("[dim]This will permanently remove the session from the list.[/dim]")
+            with Horizontal():
+                yield Button("Delete", variant="error", id="delete_btn")
+                yield Button("Cancel", id="cancel_btn")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        self.dismiss(event.button.id == "delete_btn")
 
     def key_escape(self) -> None:
         self.dismiss(False)
@@ -191,9 +255,9 @@ Manage multiple Claude Code sessions from one dashboard.
 
   [bold]N[/bold]     New session       [bold]Enter[/bold] Send command
   [bold]X[/bold]     Stop session      [bold]R[/bold]     Restart
-  [bold]B[/bold]     Broadcast to all  [bold]H[/bold]     Help
+  [bold]D[/bold]     Delete session    [bold]B[/bold]     Broadcast to all
   [bold]/[/bold]     Filter            [bold]S[/bold]     Sort
-  [bold]Q[/bold]     Quit (auto-saves)
+  [bold]H[/bold]     Help              [bold]Q[/bold]     Quit (auto-saves)
 
 Press [bold]N[/bold] to get started, or [bold]Esc[/bold] to close.
 """
@@ -234,6 +298,7 @@ class HelpModal(ModalScreen):
   [bold]N[/bold]     New session (specify dir, name, model)
   [bold]Enter[/bold] Send command to selected session
   [bold]X[/bold]     Stop selected session
+  [bold]D[/bold]     Delete DONE/DEAD session from list
   [bold]R[/bold]     Restart selected session
   [bold]B[/bold]     Broadcast command to all WAIT sessions
   [bold]/[/bold]     Filter by status (cycle: All/RUN/WAIT/DEAD/DONE)

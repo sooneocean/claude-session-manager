@@ -17,6 +17,17 @@ Horizontal {
     border-left: solid $primary;
 }
 
+#session_header {
+    height: 1;
+    background: $surface;
+    color: $text;
+    padding: 0 1;
+}
+
+#output_log {
+    height: 1fr;
+}
+
 #status_bar {
     dock: bottom;
     height: 1;

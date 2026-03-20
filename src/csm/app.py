@@ -21,11 +21,12 @@ from csm.core.session_manager import (
 from csm.core.command_dispatcher import CommandDispatcher, QueueFullError, SessionDeadError
 from csm.core.persistence import save_sessions, load_sessions
 from csm.models.session import SessionStatus
-from csm.widgets.session_list import SessionList
+from csm.widgets.session_list import SessionList, SortKey
 from csm.widgets.detail_panel import DetailPanel
 from csm.widgets.modals import (
     NewSessionModal,
     ConfirmStopModal,
+    ConfirmDeleteModal,
     CommandInputModal,
     RunningWarningModal,
     HelpModal,
@@ -42,6 +43,7 @@ class CSMApp(App):
     BINDINGS = [
         Binding("n", "new_session", "New Session"),
         Binding("x", "stop_session", "Stop"),
+        Binding("d", "delete_session", "Delete"),
         Binding("r", "restart_session", "Restart"),
         Binding("enter", "send_command", "Command"),
         Binding("q", "quit_app", "Quit"),
@@ -101,7 +103,8 @@ class CSMApp(App):
     def _refresh_display(self) -> None:
         """Refresh the session list, status bar, and detail panel (incremental)."""
         sessions = self._session_manager.get_sessions()
-        self.query_one("#session_list", SessionList).update_sessions(sessions)
+        session_list = self.query_one("#session_list", SessionList)
+        session_list.update_sessions(sessions)
 
         total = self._session_manager.cost_aggregator.get_total()
         active = sum(
@@ -110,6 +113,11 @@ class CSMApp(App):
             if s.status not in (SessionStatus.DONE, SessionStatus.DEAD)
         )
         status_text = f"Total: ${total.total_cost_usd:.2f} | Sessions: {active}/{len(sessions)}"
+
+        # Filter/Sort indicators (#8)
+        filter_label = session_list._filter_status.value if session_list._filter_status else "All"
+        sort_label = session_list._sort_key.value if session_list._sort_key != SortKey.NONE else "none"
+        status_text += f" | Filter: {filter_label} | Sort: {sort_label}"
 
         # Resource monitoring (psutil)
         if HAS_PSUTIL:
@@ -125,9 +133,11 @@ class CSMApp(App):
 
         self.query_one("#status_bar", Static).update(status_text)
 
-        # Incrementally update detail panel with new output lines
+        # Update detail panel header + output
         if self._selected_session_id:
             panel = self.query_one("#detail_panel", DetailPanel)
+            session = self._session_manager.get_session(self._selected_session_id)
+            panel.update_header(session)
             buf = self._session_manager.buffer_store.get(self._selected_session_id)
             if buf is not None:
                 panel.refresh_from_buffer(self._selected_session_id, buf.get_lines())
@@ -192,6 +202,32 @@ class CSMApp(App):
             await self._session_manager.stop(self._selected_session_id)
             self._refresh_display()
 
+    def action_delete_session(self) -> None:
+        """Delete a DONE/DEAD session from the list."""
+        self._do_delete_session()
+
+    @work
+    async def _do_delete_session(self) -> None:
+        if not self._selected_session_id:
+            return
+        session = self._session_manager.get_session(self._selected_session_id)
+        if not session:
+            return
+
+        if session.status not in (SessionStatus.DONE, SessionStatus.DEAD):
+            self.notify("Only DONE or DEAD sessions can be deleted. Stop first.", severity="warning")
+            return
+
+        dir_name = session.config.name or os.path.basename(session.config.cwd) or session.config.cwd
+        confirmed = await self.push_screen_wait(ConfirmDeleteModal(dir_name))
+        if confirmed:
+            self._dispatcher.cleanup_session(self._selected_session_id)
+            await self._session_manager.remove(self._selected_session_id)
+            self._selected_session_id = None
+            self.query_one("#detail_panel", DetailPanel).show_placeholder()
+            self._refresh_display()
+            self.notify("Session deleted")
+
     def action_restart_session(self) -> None:
         self._do_restart_session()
 
@@ -218,7 +254,6 @@ class CSMApp(App):
 
     def action_sort_sessions(self) -> None:
         """Cycle through sort keys."""
-        from csm.widgets.session_list import SortKey
         session_list = self.query_one("#session_list", SessionList)
         current = session_list.cycle_sort()
         self.notify(f"Sort: {current.value}")
@@ -267,7 +302,9 @@ class CSMApp(App):
         self._selected_session_id = event.session_id
         panel = self.query_one("#detail_panel", DetailPanel)
         if event.session_id:
+            session = self._session_manager.get_session(event.session_id)
             panel.track_session(event.session_id)
+            panel.update_header(session)
             buf = self._session_manager.buffer_store.get(event.session_id)
             if buf is not None:
                 panel.show_output(buf.get_lines(100))

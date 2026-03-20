@@ -1,6 +1,7 @@
 """Tests for DetailPanel widget. T10"""
 import pytest
 from textual.app import App, ComposeResult
+from textual.widgets import RichLog
 
 from csm.widgets.detail_panel import DetailPanel
 
@@ -9,10 +10,13 @@ class _PanelApp(App):
     """Minimal host app for DetailPanel tests."""
 
     def compose(self) -> ComposeResult:
-        yield DetailPanel(id="dp", markup=True)
+        yield DetailPanel(id="dp")
 
     def get_panel(self) -> DetailPanel:
         return self.query_one("#dp", DetailPanel)
+
+    def get_log(self) -> RichLog:
+        return self.query_one("#output_log", RichLog)
 
 
 # ---------------------------------------------------------------------------
@@ -25,10 +29,10 @@ async def test_empty_state_shows_placeholder():
     app = _PanelApp()
     async with app.run_test() as pilot:
         panel = app.get_panel()
+        log = app.get_log()
         await pilot.pause()
         assert panel is not None
-        # After mount, show_placeholder is called; lines should be non-empty
-        assert len(panel.lines) >= 1
+        assert len(log.lines) >= 1
 
 
 # ---------------------------------------------------------------------------
@@ -41,9 +45,10 @@ async def test_display_buffer_content():
     app = _PanelApp()
     async with app.run_test() as pilot:
         panel = app.get_panel()
+        log = app.get_log()
         panel.show_output(lines)
         await pilot.pause()
-        assert len(panel.lines) >= len(lines)
+        assert len(log.lines) >= len(lines)
 
 
 # ---------------------------------------------------------------------------
@@ -56,14 +61,15 @@ async def test_switch_session_updates_content():
     app = _PanelApp()
     async with app.run_test() as pilot:
         panel = app.get_panel()
+        log = app.get_log()
 
         panel.show_output(["session A output"])
         await pilot.pause()
-        count_a = len(panel.lines)
+        count_a = len(log.lines)
 
         panel.show_output(["session B line 1", "session B line 2"])
         await pilot.pause()
-        count_b = len(panel.lines)
+        count_b = len(log.lines)
 
         # Second call has 2 lines, should be reflected
         assert count_b >= 2
@@ -80,7 +86,7 @@ async def test_auto_scroll_to_bottom():
     app = _PanelApp()
     async with app.run_test() as pilot:
         panel = app.get_panel()
+        log = app.get_log()
         panel.show_output(lines)
         await pilot.pause()
-        # v2: show_output no longer truncates — caller (app.py) passes get_lines(100)
-        assert len(panel.lines) == 200
+        assert len(log.lines) == 200
