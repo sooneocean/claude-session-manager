@@ -35,12 +35,12 @@ def load_config(path: Path = DEFAULT_CONFIG_PATH) -> UserConfig:
             default_model=data.get("default_model"),
             default_permission_mode=data.get("default_permission_mode", "auto"),
             default_max_budget_usd=data.get("default_max_budget_usd"),
-            auto_compact_threshold=data.get("auto_compact_threshold", 50000),
-            session_limit=data.get("session_limit", 20),
-            output_buffer_capacity=data.get("output_buffer_capacity", 1000),
-            refresh_interval=data.get("refresh_interval", 1.0),
+            auto_compact_threshold=max(1000, data.get("auto_compact_threshold", 50000)),
+            session_limit=max(1, data.get("session_limit", 20)),
+            output_buffer_capacity=max(100, data.get("output_buffer_capacity", 1000)),
+            refresh_interval=max(0.5, data.get("refresh_interval", 1.0)),
             auto_restart_dead=data.get("auto_restart_dead", False),
-            auto_restart_max=data.get("auto_restart_max", 3),
+            auto_restart_max=max(0, data.get("auto_restart_max", 3)),
         )
     except (json.JSONDecodeError, ValueError) as e:
         logger.warning("Failed to load config from %s: %s", path, e)

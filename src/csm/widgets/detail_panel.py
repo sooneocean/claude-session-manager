@@ -82,7 +82,7 @@ class DetailPanel(Vertical):
         self._tracking_session_id = session_id
         self._last_line_count = 0
 
-    def search_output(self, term: str, lines: list[str]) -> None:
+    def search_output(self, term: str, lines: list[str]) -> int:
         """Search and highlight matching lines in the output."""
         self._log.clear()
         matches = 0
@@ -101,7 +101,13 @@ class DetailPanel(Vertical):
             return
 
         new_count = len(lines)
-        if new_count > self._last_line_count:
+        if new_count < self._last_line_count:
+            # Buffer wrapped — do a full refresh
+            self._log.clear()
+            for line in lines:
+                self._log.write(line)
+            self._last_line_count = new_count
+        elif new_count > self._last_line_count:
             for line in lines[self._last_line_count:]:
                 self._log.write(line)
             self._last_line_count = new_count

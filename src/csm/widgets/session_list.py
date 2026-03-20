@@ -74,7 +74,7 @@ class SessionList(DataTable):
     def _format_activity(dt: datetime) -> str:
         """Format last activity as relative time (e.g. '2m ago')."""
         delta = datetime.now() - dt
-        secs = int(delta.total_seconds())
+        secs = max(0, int(delta.total_seconds()))
         if secs < 60:
             return f"{secs}s ago"
         elif secs < 3600:

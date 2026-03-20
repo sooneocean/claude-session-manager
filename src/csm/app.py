@@ -90,6 +90,7 @@ class CSMApp(App):
         self._selected_session_id: str | None = None
         self._budget_warned: set[str] = set()  # session_ids already warned
         self._restart_counts: dict[str, int] = {}  # auto-restart counters
+        self._restarting: set[str] = set()  # sessions currently being auto-restarted
         # Restore sessions from previous run
         self._restore_sessions()
         self.set_interval(self._config.refresh_interval, self._refresh_display)
@@ -117,7 +118,9 @@ class CSMApp(App):
         saved = load_sessions()
         for state in saved:
             self._session_manager._sessions[state.session_id] = state
-            self._session_manager._buffer_store.create(state.session_id)
+            self._session_manager._buffer_store.create(
+                state.session_id, self._config.output_buffer_capacity
+            )
             self._session_manager._cost_aggregator.update(
                 state.session_id, state.tokens_in, state.tokens_out, state.cost_usd
             )
@@ -167,13 +170,14 @@ class CSMApp(App):
                     severity="warning",
                 )
 
-        # Auto-restart dead sessions
+        # Auto-restart dead sessions (with in-progress guard)
         if self._config.auto_restart_dead:
             for s in sessions:
-                if s.status == SessionStatus.DEAD:
+                if s.status == SessionStatus.DEAD and s.session_id not in self._restarting:
                     count = self._restart_counts.get(s.session_id, 0)
                     if count < self._config.auto_restart_max:
                         self._restart_counts[s.session_id] = count + 1
+                        self._restarting.add(s.session_id)
                         name = s.config.name or os.path.basename(s.config.cwd)
                         self.notify(f"Auto-restarting '{name}' (attempt {count + 1})")
                         self._trigger_auto_restart(s.session_id)
@@ -204,6 +208,8 @@ class CSMApp(App):
             self._restart_counts[new_id] = old_count
         except Exception as e:
             self.notify(f"Auto-restart failed: {e}", severity="error")
+        finally:
+            self._restarting.discard(session_id)
 
     def action_new_session(self) -> None:
         self._do_new_session()
@@ -291,8 +297,12 @@ class CSMApp(App):
         dir_name = session.config.name or os.path.basename(session.config.cwd) or session.config.cwd
         confirmed = await self.push_screen_wait(ConfirmDeleteModal(dir_name))
         if confirmed:
-            self._dispatcher.cleanup_session(self._selected_session_id)
-            await self._session_manager.remove(self._selected_session_id)
+            sid = self._selected_session_id
+            self._dispatcher.cleanup_session(sid)
+            await self._session_manager.remove(sid)
+            self._budget_warned.discard(sid)
+            self._restart_counts.pop(sid, None)
+            self._restarting.discard(sid)
             self._selected_session_id = None
             self.query_one("#detail_panel", DetailPanel).show_placeholder()
             self._refresh_display()
@@ -541,6 +551,9 @@ class CSMApp(App):
         for s in removable:
             self._dispatcher.cleanup_session(s.session_id)
             await self._session_manager.remove(s.session_id)
+            self._budget_warned.discard(s.session_id)
+            self._restart_counts.pop(s.session_id, None)
+            self._restarting.discard(s.session_id)
         if self._selected_session_id and not self._session_manager.get_session(self._selected_session_id):
             self._selected_session_id = None
             self.query_one("#detail_panel", DetailPanel).show_placeholder()
@@ -556,8 +569,12 @@ class CSMApp(App):
         self.push_screen(HelpModal())
 
     async def action_quit_app(self) -> None:
-        # Save sessions before shutdown
+        # Save sessions before shutdown — mark running sessions as DEAD
+        # since they won't have a backing process after restart
         sessions = self._session_manager.get_sessions()
+        for s in sessions:
+            if s.status in (SessionStatus.RUN, SessionStatus.STARTING):
+                s.status = SessionStatus.DEAD
         save_sessions(sessions)
         await self._dispatcher.shutdown()
         await self._session_manager.shutdown()

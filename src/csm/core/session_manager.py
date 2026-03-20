@@ -1,7 +1,10 @@
 """SessionManager - manages Claude CLI sessions via --print --resume mode. T7"""
 import asyncio
+import logging
 import os
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 from csm.models.session import SessionState, SessionConfig, SessionStatus
 from csm.models.cost import CostAggregator
@@ -143,9 +146,12 @@ class SessionManager:
                 if result is not None:
                     state.status = SessionStatus.WAIT
                 else:
+                    # Retry once — reset status before second attempt
+                    state.status = SessionStatus.RUN
                     result = await self._run_claude(state, initial_prompt)
                     state.status = SessionStatus.WAIT if result is not None else SessionStatus.DEAD
-            except Exception:
+            except Exception as e:
+                logger.error("Spawn failed for session %s: %s", state.session_id, e)
                 state.status = SessionStatus.DEAD
 
         import asyncio
@@ -176,9 +182,12 @@ class SessionManager:
                     state.status = SessionStatus.WAIT
                     await self._auto_compact_if_needed(state)
                 else:
+                    # Retry once — reset status before second attempt
+                    state.status = SessionStatus.RUN
                     result = await self._run_claude(state, command)
                     state.status = SessionStatus.WAIT if result is not None else SessionStatus.DEAD
-            except Exception:
+            except Exception as e:
+                logger.error("Command failed for session %s: %s", state.session_id, e)
                 state.status = SessionStatus.DEAD
 
         import asyncio
@@ -200,12 +209,14 @@ class SessionManager:
             state.session_id, total_tokens,
         )
         state.status = SessionStatus.RUN
-        await self._run_claude(state, "/compact")
-        state.status = SessionStatus.WAIT
-        # Reset token counters after compact
-        state.tokens_in = 0
-        state.tokens_out = 0
-        self._cost_aggregator.update(state.session_id, 0, 0, state.cost_usd)
+        result = await self._run_claude(state, "/compact")
+        if result is not None:
+            state.status = SessionStatus.WAIT
+            # Reset token counters after successful compact
+            state.tokens_in = 0
+            state.tokens_out = 0
+            self._cost_aggregator.update(state.session_id, 0, 0, state.cost_usd)
+        # If compact failed, _run_claude already set status to DEAD
 
     async def stop(self, session_id: str) -> None:
         """Mark *session_id* as DONE.  Terminates any in-flight process."""
