@@ -26,6 +26,7 @@ from csm.core.persistence import save_sessions, load_sessions
 from csm.models.session import SessionConfig, SessionStatus
 from csm.widgets.session_list import SessionList, SortKey
 from csm.widgets.detail_panel import DetailPanel
+from csm.widgets.stats_panel import StatsPanel
 from csm.widgets.modals import (
     NewSessionModal,
     ConfirmStopModal,
@@ -65,6 +66,7 @@ class CSMApp(App):
         Binding("slash", "filter_sessions", "Filter"),
         Binding("s", "sort_sessions", "Sort"),
         Binding("h", "show_help", "Help"),
+        Binding("i", "show_stats", "Stats"),
     ]
 
     def compose(self) -> ComposeResult:
@@ -516,6 +518,11 @@ class CSMApp(App):
             self.query_one("#detail_panel", DetailPanel).show_placeholder()
         self._refresh_display()
         self.notify(f"Cleaned {len(removable)} sessions")
+
+    def action_show_stats(self) -> None:
+        """Show dashboard statistics overlay."""
+        sessions = self._session_manager.get_sessions()
+        self.push_screen(StatsPanel(sessions))
 
     def action_show_help(self) -> None:
         self.push_screen(HelpModal())
