@@ -152,6 +152,47 @@ class ConfirmDeleteModal(ModalScreen):
         self.dismiss(False)
 
 
+class NoteInputModal(ModalScreen):
+    """Modal for adding/editing session notes."""
+
+    CSS = """
+    NoteInputModal { align: center middle; }
+    #dialog {
+        width: 65;
+        height: auto;
+        border: thick $accent;
+        padding: 1 2;
+    }
+    """
+
+    def __init__(self, current_note: str = "") -> None:
+        super().__init__()
+        self._current_note = current_note
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="dialog"):
+            yield Static("[bold]Session Notes[/bold]")
+            yield Input(value=self._current_note, placeholder="Add a note...", id="note_input")
+            with Horizontal():
+                yield Button("Save", variant="primary", id="save_btn")
+                yield Button("Clear", variant="warning", id="clear_btn")
+                yield Button("Cancel", id="cancel_btn")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "save_btn":
+            self.dismiss(self.query_one("#note_input", Input).value.strip())
+        elif event.button.id == "clear_btn":
+            self.dismiss("")
+        else:
+            self.dismiss(None)
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        self.dismiss(event.value.strip())
+
+    def key_escape(self) -> None:
+        self.dismiss(None)
+
+
 class SearchInputModal(ModalScreen):
     """Modal for searching output text."""
 

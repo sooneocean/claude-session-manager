@@ -29,6 +29,7 @@ def _serialize_session(state: SessionState) -> dict:
         "tokens_out": state.tokens_out,
         "cost_usd": state.cost_usd,
         "last_result": state.last_result,
+        "notes": state.notes,
     }
 
 
@@ -53,6 +54,7 @@ def _deserialize_session(data: dict) -> SessionState:
     state.tokens_out = data.get("tokens_out", 0)
     state.cost_usd = data.get("cost_usd", 0.0)
     state.last_result = data.get("last_result", "")
+    state.notes = data.get("notes", "")
     return state
 
 

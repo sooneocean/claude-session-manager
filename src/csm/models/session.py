@@ -38,6 +38,7 @@ class SessionState:
     tokens_out: int = 0
     cost_usd: float = 0.0
     last_result: str = ""  # Most recent response text
+    notes: str = ""  # User-defined notes/annotations
 
     @staticmethod
     def create(config: SessionConfig) -> "SessionState":

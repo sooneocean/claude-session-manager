@@ -31,6 +31,7 @@ from csm.widgets.modals import (
     ConfirmDeleteModal,
     CommandInputModal,
     SearchInputModal,
+    NoteInputModal,
     RunningWarningModal,
     HelpModal,
     WelcomeScreen,
@@ -56,6 +57,7 @@ class CSMApp(App):
         Binding("X", "stop_all", "Stop All", show=False),
         Binding("D", "delete_all_done", "Delete Done", show=False),
         Binding("f", "search_output", "Search"),
+        Binding("a", "annotate_session", "Note"),
         Binding("slash", "filter_sessions", "Filter"),
         Binding("s", "sort_sessions", "Sort"),
         Binding("h", "show_help", "Help"),
@@ -251,6 +253,23 @@ class CSMApp(App):
             self.query_one("#detail_panel", DetailPanel).show_placeholder()
             self._refresh_display()
             self.notify("Session deleted")
+
+    def action_annotate_session(self) -> None:
+        """Add or edit notes for the selected session."""
+        self._do_annotate_session()
+
+    @work
+    async def _do_annotate_session(self) -> None:
+        if not self._selected_session_id:
+            self.notify("No session selected", severity="warning")
+            return
+        session = self._session_manager.get_session(self._selected_session_id)
+        if not session:
+            return
+        result = await self.push_screen_wait(NoteInputModal(session.notes))
+        if result is not None:
+            session.notes = result
+            self.notify("Note saved" if result else "Note cleared")
 
     def action_search_output(self) -> None:
         """Search within the selected session's output."""

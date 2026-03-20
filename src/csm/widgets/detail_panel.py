@@ -29,9 +29,10 @@ class SessionHeader(Static):
         tokens = f"{session.tokens_in + session.tokens_out:,}"
         cost = f"${session.cost_usd:.2f}"
         model = session.config.model or "default"
-        self.update(
-            f" [{style}]{status}[/{style}]  {name}  |  {model}  |  {tokens} tokens  |  {cost}"
-        )
+        text = f" [{style}]{status}[/{style}]  {name}  |  {model}  |  {tokens} tokens  |  {cost}"
+        if session.notes:
+            text += f"  | [italic]{session.notes}[/italic]"
+        self.update(text)
 
 
 class DetailPanel(Vertical):
