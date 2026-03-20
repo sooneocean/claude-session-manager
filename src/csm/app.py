@@ -82,6 +82,7 @@ class CSMApp(App):
         self._dispatcher = CommandDispatcher(self._session_manager)
         self._selected_session_id: str | None = None
         self._budget_warned: set[str] = set()  # session_ids already warned
+        self._restart_counts: dict[str, int] = {}  # auto-restart counters
         # Restore sessions from previous run
         self._restore_sessions()
         self.set_interval(self._config.refresh_interval, self._refresh_display)
@@ -159,6 +160,17 @@ class CSMApp(App):
                     severity="warning",
                 )
 
+        # Auto-restart dead sessions
+        if self._config.auto_restart_dead:
+            for s in sessions:
+                if s.status == SessionStatus.DEAD:
+                    count = self._restart_counts.get(s.session_id, 0)
+                    if count < self._config.auto_restart_max:
+                        self._restart_counts[s.session_id] = count + 1
+                        name = s.config.name or os.path.basename(s.config.cwd)
+                        self.notify(f"Auto-restarting '{name}' (attempt {count + 1})")
+                        self._trigger_auto_restart(s.session_id)
+
         # Session limit warning
         if active >= self._session_manager.SESSION_LIMIT:
             status_text += " [bold red]LIMIT REACHED[/bold red]"
@@ -173,6 +185,18 @@ class CSMApp(App):
             buf = self._session_manager.buffer_store.get(self._selected_session_id)
             if buf is not None:
                 panel.refresh_from_buffer(self._selected_session_id, buf.get_lines())
+
+    @work
+    async def _trigger_auto_restart(self, session_id: str) -> None:
+        try:
+            self._dispatcher.cleanup_session(session_id)
+            new_id = await self._session_manager.restart(session_id)
+            self._dispatcher.register_session(new_id)
+            # Transfer restart count to new session
+            old_count = self._restart_counts.pop(session_id, 0)
+            self._restart_counts[new_id] = old_count
+        except Exception as e:
+            self.notify(f"Auto-restart failed: {e}", severity="error")
 
     def action_new_session(self) -> None:
         self._do_new_session()
