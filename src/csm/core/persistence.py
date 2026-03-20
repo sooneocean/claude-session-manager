@@ -30,6 +30,7 @@ def _serialize_session(state: SessionState) -> dict:
         "cost_usd": state.cost_usd,
         "last_result": state.last_result,
         "notes": state.notes,
+        "tags": state.tags,
     }
 
 
@@ -55,6 +56,7 @@ def _deserialize_session(data: dict) -> SessionState:
     state.cost_usd = data.get("cost_usd", 0.0)
     state.last_result = data.get("last_result", "")
     state.notes = data.get("notes", "")
+    state.tags = data.get("tags", [])
     return state
 
 

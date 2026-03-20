@@ -33,6 +33,7 @@ from csm.widgets.modals import (
     CommandInputModal,
     SearchInputModal,
     NoteInputModal,
+    TagInputModal,
     RunningWarningModal,
     HelpModal,
     WelcomeScreen,
@@ -59,6 +60,8 @@ class CSMApp(App):
         Binding("D", "delete_all_done", "Delete Done", show=False),
         Binding("f", "search_output", "Search"),
         Binding("a", "annotate_session", "Note"),
+        Binding("t", "tag_session", "Tag"),
+        Binding("T", "filter_by_tag", "Tag Filter", show=False),
         Binding("slash", "filter_sessions", "Filter"),
         Binding("s", "sort_sessions", "Sort"),
         Binding("h", "show_help", "Help"),
@@ -304,6 +307,40 @@ class CSMApp(App):
         if result is not None:
             session.notes = result
             self.notify("Note saved" if result else "Note cleared")
+
+    def action_tag_session(self) -> None:
+        """Add or edit tags for the selected session."""
+        self._do_tag_session()
+
+    @work
+    async def _do_tag_session(self) -> None:
+        if not self._selected_session_id:
+            self.notify("No session selected", severity="warning")
+            return
+        session = self._session_manager.get_session(self._selected_session_id)
+        if not session:
+            return
+        result = await self.push_screen_wait(TagInputModal(session.tags))
+        if result is not None:
+            session.tags = result
+            self.notify(f"Tags: {', '.join(result)}" if result else "Tags cleared")
+
+    def action_filter_by_tag(self) -> None:
+        """Cycle through tag-based filtering."""
+        sessions = self._session_manager.get_sessions()
+        all_tags = sorted(set(t for s in sessions for t in s.tags))
+        if not all_tags:
+            self.notify("No tags found", severity="warning")
+            return
+        session_list = self.query_one("#session_list", SessionList)
+        current = getattr(session_list, '_filter_tag', None)
+        if current in all_tags:
+            idx = all_tags.index(current)
+            next_tag = all_tags[(idx + 1) % len(all_tags)] if idx + 1 < len(all_tags) else None
+        else:
+            next_tag = all_tags[0]
+        session_list._filter_tag = next_tag
+        self.notify(f"Tag filter: {next_tag or 'None'}")
 
     def action_search_output(self) -> None:
         """Search within the selected session's output."""

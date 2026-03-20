@@ -160,6 +160,50 @@ class ConfirmDeleteModal(ModalScreen):
         self.dismiss(False)
 
 
+class TagInputModal(ModalScreen):
+    """Modal for adding/editing session tags."""
+
+    CSS = """
+    TagInputModal { align: center middle; }
+    #dialog {
+        width: 60;
+        height: auto;
+        border: thick $accent;
+        padding: 1 2;
+    }
+    """
+
+    def __init__(self, current_tags: list[str] | None = None) -> None:
+        super().__init__()
+        self._current_tags = ", ".join(current_tags) if current_tags else ""
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="dialog"):
+            yield Static("[bold]Session Tags[/bold] (comma-separated)")
+            yield Input(value=self._current_tags, placeholder="e.g. frontend, urgent, v2", id="tag_input")
+            with Horizontal():
+                yield Button("Save", variant="primary", id="save_btn")
+                yield Button("Clear", variant="warning", id="clear_btn")
+                yield Button("Cancel", id="cancel_btn")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "save_btn":
+            raw = self.query_one("#tag_input", Input).value
+            tags = [t.strip() for t in raw.split(",") if t.strip()]
+            self.dismiss(tags)
+        elif event.button.id == "clear_btn":
+            self.dismiss([])
+        else:
+            self.dismiss(None)
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        tags = [t.strip() for t in event.value.split(",") if t.strip()]
+        self.dismiss(tags)
+
+    def key_escape(self) -> None:
+        self.dismiss(None)
+
+
 class NoteInputModal(ModalScreen):
     """Modal for adding/editing session notes."""
 

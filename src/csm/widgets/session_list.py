@@ -47,6 +47,7 @@ class SessionList(DataTable):
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
         self._filter_status: SessionStatus | None = None
+        self._filter_tag: str | None = None
         self._sort_key: SortKey = SortKey.NONE
         self._all_sessions: list[SessionState] = []
 
@@ -175,9 +176,12 @@ class SessionList(DataTable):
         return next_sort
 
     def _apply_filter(self, sessions: list[SessionState]) -> list[SessionState]:
-        if self._filter_status is None:
-            return sessions
-        return [s for s in sessions if s.status == self._filter_status]
+        result = sessions
+        if self._filter_status is not None:
+            result = [s for s in result if s.status == self._filter_status]
+        if self._filter_tag is not None:
+            result = [s for s in result if self._filter_tag in s.tags]
+        return result
 
     def _apply_sort(self, sessions: list[SessionState]) -> list[SessionState]:
         if self._sort_key == SortKey.COST:

@@ -39,6 +39,7 @@ class SessionState:
     cost_usd: float = 0.0
     last_result: str = ""  # Most recent response text
     notes: str = ""  # User-defined notes/annotations
+    tags: list[str] = field(default_factory=list)  # User-defined tags
 
     @staticmethod
     def create(config: SessionConfig) -> "SessionState":
