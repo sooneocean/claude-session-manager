@@ -8,23 +8,28 @@ from textual.containers import Vertical, Horizontal
 from csm.models.session import SessionConfig
 
 
+def _modal_css(name: str, border_color: str = "$primary", width: int = 60,
+               extra: str = "") -> str:
+    """Generate consistent modal CSS."""
+    return f"""
+    {name} {{ align: center middle; }}
+    #dialog {{
+        width: {width};
+        height: auto;
+        border: thick {border_color};
+        padding: 1 2;
+        {extra}
+    }}
+    """
+
+
 class NewSessionModal(ModalScreen):
     """Modal for creating a new session.
 
     Dismisses with a SessionConfig on confirm, or None on cancel.
     """
 
-    CSS = """
-    NewSessionModal { align: center middle; }
-    #dialog {
-        width: 65;
-        height: auto;
-        max-height: 90%;
-        border: thick $primary;
-        padding: 1 2;
-        overflow-y: auto;
-    }
-    """
+    CSS = _modal_css("NewSessionModal", "$primary", 65, "max-height: 90%; overflow-y: auto;")
 
     PERMISSION_MODES = [
         ("auto", "auto"),
@@ -97,15 +102,7 @@ class ConfirmStopModal(ModalScreen):
     Dismisses with True on confirm, False on cancel.
     """
 
-    CSS = """
-    ConfirmStopModal { align: center middle; }
-    #dialog {
-        width: 50;
-        height: auto;
-        border: thick $error;
-        padding: 1 2;
-    }
-    """
+    CSS = _modal_css("ConfirmStopModal", "$error", 50)
 
     def __init__(self, session_name: str) -> None:
         super().__init__()
@@ -131,15 +128,7 @@ class ConfirmDeleteModal(ModalScreen):
     Dismisses with True on confirm, False on cancel.
     """
 
-    CSS = """
-    ConfirmDeleteModal { align: center middle; }
-    #dialog {
-        width: 50;
-        height: auto;
-        border: thick $error;
-        padding: 1 2;
-    }
-    """
+    CSS = _modal_css("ConfirmDeleteModal", "$error", 50)
 
     def __init__(self, session_name: str) -> None:
         super().__init__()
@@ -163,15 +152,7 @@ class ConfirmDeleteModal(ModalScreen):
 class TagInputModal(ModalScreen):
     """Modal for adding/editing session tags."""
 
-    CSS = """
-    TagInputModal { align: center middle; }
-    #dialog {
-        width: 60;
-        height: auto;
-        border: thick $accent;
-        padding: 1 2;
-    }
-    """
+    CSS = _modal_css("TagInputModal", "$accent")
 
     def __init__(self, current_tags: list[str] | None = None) -> None:
         super().__init__()
@@ -207,15 +188,7 @@ class TagInputModal(ModalScreen):
 class NoteInputModal(ModalScreen):
     """Modal for adding/editing session notes."""
 
-    CSS = """
-    NoteInputModal { align: center middle; }
-    #dialog {
-        width: 65;
-        height: auto;
-        border: thick $accent;
-        padding: 1 2;
-    }
-    """
+    CSS = _modal_css("NoteInputModal", "$accent", 65)
 
     def __init__(self, current_note: str = "") -> None:
         super().__init__()
@@ -248,15 +221,7 @@ class NoteInputModal(ModalScreen):
 class SearchInputModal(ModalScreen):
     """Modal for searching output text."""
 
-    CSS = """
-    SearchInputModal { align: center middle; }
-    #dialog {
-        width: 60;
-        height: auto;
-        border: thick $accent;
-        padding: 1 2;
-    }
-    """
+    CSS = _modal_css("SearchInputModal", "$accent")
 
     def compose(self) -> ComposeResult:
         with Vertical(id="dialog"):
@@ -287,15 +252,7 @@ class CommandInputModal(ModalScreen):
     Dismisses with the command string, or None on cancel/empty.
     """
 
-    CSS = """
-    CommandInputModal { align: center middle; }
-    #dialog {
-        width: 70;
-        height: auto;
-        border: thick $accent;
-        padding: 1 2;
-    }
-    """
+    CSS = _modal_css("CommandInputModal", "$accent", 70)
 
     def __init__(self, session_name: str) -> None:
         super().__init__()
@@ -330,15 +287,7 @@ class RunningWarningModal(ModalScreen):
     Dismisses with True to proceed, False to cancel.
     """
 
-    CSS = """
-    RunningWarningModal { align: center middle; }
-    #dialog {
-        width: 55;
-        height: auto;
-        border: thick $warning;
-        padding: 1 2;
-    }
-    """
+    CSS = _modal_css("RunningWarningModal", "$warning", 55)
 
     def compose(self) -> ComposeResult:
         with Vertical(id="dialog"):
@@ -359,15 +308,7 @@ class RunningWarningModal(ModalScreen):
 class WelcomeScreen(ModalScreen):
     """First-run welcome screen shown when ~/.csm/ doesn't exist."""
 
-    CSS = """
-    WelcomeScreen { align: center middle; }
-    #dialog {
-        width: 65;
-        height: auto;
-        border: thick $success;
-        padding: 2 3;
-    }
-    """
+    CSS = _modal_css("WelcomeScreen", "$success", 65, "padding: 2 3;")
 
     WELCOME_TEXT = """\
 [bold green]Welcome to Claude Session Manager![/bold green]
@@ -408,16 +349,7 @@ Press [bold]N[/bold] to get started, or [bold]Esc[/bold] to close.
 class HelpModal(ModalScreen):
     """Help screen showing keyboard shortcuts and usage info."""
 
-    CSS = """
-    HelpModal { align: center middle; }
-    #dialog {
-        width: 65;
-        height: auto;
-        border: thick $primary;
-        padding: 1 2;
-        max-height: 80%;
-    }
-    """
+    CSS = _modal_css("HelpModal", "$primary", 65, "max-height: 80%;")
 
     HELP_TEXT = """\
 [bold]Claude Session Manager (CSM)[/bold]

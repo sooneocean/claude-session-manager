@@ -130,7 +130,7 @@ class SessionManager:
 
         state = SessionState.create(config)
         self._sessions[state.session_id] = state
-        self._buffer_store.create(state.session_id)
+        self._buffer_store.create(state.session_id, self._buffer_capacity)
 
         initial_prompt = "continue" if config.resume_id else "hello, ready to work"
 

@@ -470,13 +470,17 @@ class CSMApp(App):
             return
 
         sent = 0
+        failed = 0
         for s in wait_sessions:
             try:
                 await self._dispatcher.enqueue(s.session_id, cmd)
                 sent += 1
             except Exception:
-                pass
-        self.notify(f"Broadcast sent to {sent}/{len(wait_sessions)} sessions")
+                failed += 1
+        msg = f"Broadcast sent to {sent}/{len(wait_sessions)} sessions"
+        if failed:
+            msg += f" ({failed} failed)"
+        self.notify(msg, severity="warning" if failed else "information")
 
     def action_stop_all(self) -> None:
         """Stop all active sessions."""

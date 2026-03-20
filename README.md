@@ -2,7 +2,7 @@
 
 > A Python TUI tool that lets you manage 10+ Claude Code sessions from a single terminal dashboard.
 
-[![v0.9.0](https://img.shields.io/badge/version-v0.9.0-blue)](https://github.com/sooneocean/claude-session-manager/releases/tag/v0.9.0)
+[![v0.21.0](https://img.shields.io/badge/version-v0.21.0-blue)](https://github.com/sooneocean/claude-session-manager)
 [![Tests](https://img.shields.io/badge/tests-150%20passing-green)]()
 [![Python](https://img.shields.io/badge/python-3.10+-yellow)]()
 [![License: MIT](https://img.shields.io/badge/license-MIT-lightgrey)]()
@@ -108,8 +108,18 @@ This design was discovered during [Wave 0 validation](docs/wave0_cli_findings.md
 | **N** | Create new session — enter project directory, optional name/model/resume ID |
 | **Enter** | Send a command to the selected session (warns if session is busy) |
 | **X** | Stop selected session (with confirmation) |
+| **D** | Delete a DONE/DEAD session from the list |
 | **R** | Restart a stopped/crashed session with same config |
-| **B** | Broadcast — send the same command to ALL waiting sessions (e.g., `/compact`) |
+| **E** | Export selected session's output to `~/.csm/exports/` |
+| **C** | Clone/duplicate session config into a new session |
+| **F** | Search within session output (highlighted matches) |
+| **A** | Add/edit notes on the selected session |
+| **T** | Add/edit tags on the selected session |
+| **I** | Dashboard statistics panel (cost, tokens, models, tags) |
+| **B** | Broadcast — send the same command to ALL waiting sessions |
+| **Shift+X** | Stop all active sessions |
+| **Shift+D** | Delete all DONE/DEAD sessions |
+| **Shift+T** | Filter sessions by tag |
 | **/** | Filter sessions by status: cycle through All → RUN → WAIT → DEAD → DONE |
 | **S** | Sort sessions: cycle through None → Cost → Status → Stage |
 | **H** | Help screen with all shortcuts and session state explanations |
@@ -145,6 +155,30 @@ Sessions are saved to `~/.csm/sessions.json` on quit. Next time you start CSM, t
 
 ### System Monitoring
 With `psutil` installed, the status bar shows CPU and RAM usage. Displays **HIGH LOAD** warning when CPU > 90% or RAM > 80%.
+
+### Log Export
+Export any session's output to `~/.csm/exports/` as timestamped `.log` files. Useful for preserving conversation history.
+
+### Session Clone
+Duplicate a session's config (directory, model, budget) into a new fresh session with one keypress.
+
+### Output Search
+Search within session output with highlighted matching lines. Case-insensitive.
+
+### Session Notes & Tags
+Annotate sessions with notes and tags. Tags support filtering (Shift+T). Both persist across restarts.
+
+### Dashboard Statistics
+Overview panel showing session counts by status, total/avg cost, token usage, model distribution, and tag breakdown.
+
+### Cost Budget Alerts
+Set a max budget per session. CSM notifies you when a session reaches 80% of its limit.
+
+### Auto-Restart
+Optionally auto-restart crashed sessions (configurable in `~/.csm/config.json`, disabled by default).
+
+### Configuration File
+Customize defaults in `~/.csm/config.json`: default model, permission mode, budget, session limit, buffer capacity, refresh interval, auto-restart settings.
 
 ### Web Mode
 Access CSM from a browser with zero code changes:
