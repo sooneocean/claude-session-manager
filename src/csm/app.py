@@ -71,6 +71,7 @@ class CSMApp(App):
         self._session_manager = SessionManager()
         self._dispatcher = CommandDispatcher(self._session_manager)
         self._selected_session_id: str | None = None
+        self._budget_warned: set[str] = set()  # session_ids already warned
         # Restore sessions from previous run
         self._restore_sessions()
         self.set_interval(1.0, self._refresh_display)
@@ -132,6 +133,21 @@ class CSMApp(App):
             status_text += f" | CPU: {cpu:.0f}% RAM: {ram:.0f}%"
             if cpu > 90 or ram > 80:
                 status_text += " [bold red]HIGH LOAD[/bold red]"
+
+        # Budget alerts — notify once when session reaches 80% of max_budget
+        for s in sessions:
+            if (
+                s.config.max_budget_usd
+                and s.session_id not in self._budget_warned
+                and s.cost_usd >= s.config.max_budget_usd * 0.8
+            ):
+                self._budget_warned.add(s.session_id)
+                name = s.config.name or os.path.basename(s.config.cwd)
+                pct = int(s.cost_usd / s.config.max_budget_usd * 100)
+                self.notify(
+                    f"Budget alert: '{name}' at {pct}% (${s.cost_usd:.2f}/${s.config.max_budget_usd:.2f})",
+                    severity="warning",
+                )
 
         # Session limit warning
         if active >= self._session_manager.SESSION_LIMIT:
