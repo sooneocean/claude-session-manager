@@ -30,6 +30,7 @@ from csm.widgets.modals import (
     ConfirmStopModal,
     ConfirmDeleteModal,
     CommandInputModal,
+    SearchInputModal,
     RunningWarningModal,
     HelpModal,
     WelcomeScreen,
@@ -54,6 +55,7 @@ class CSMApp(App):
         Binding("b", "broadcast_command", "Broadcast"),
         Binding("X", "stop_all", "Stop All", show=False),
         Binding("D", "delete_all_done", "Delete Done", show=False),
+        Binding("f", "search_output", "Search"),
         Binding("slash", "filter_sessions", "Filter"),
         Binding("s", "sort_sessions", "Sort"),
         Binding("h", "show_help", "Help"),
@@ -249,6 +251,27 @@ class CSMApp(App):
             self.query_one("#detail_panel", DetailPanel).show_placeholder()
             self._refresh_display()
             self.notify("Session deleted")
+
+    def action_search_output(self) -> None:
+        """Search within the selected session's output."""
+        self._do_search_output()
+
+    @work
+    async def _do_search_output(self) -> None:
+        if not self._selected_session_id:
+            self.notify("No session selected", severity="warning")
+            return
+        buf = self._session_manager.buffer_store.get(self._selected_session_id)
+        if not buf:
+            self.notify("No output to search", severity="warning")
+            return
+        term = await self.push_screen_wait(SearchInputModal())
+        if not term:
+            return
+        lines = buf.get_lines()
+        panel = self.query_one("#detail_panel", DetailPanel)
+        matches = panel.search_output(term, lines)
+        self.notify(f"Found {matches} matching lines for '{term}'")
 
     def action_export_log(self) -> None:
         """Export selected session's output to a file."""

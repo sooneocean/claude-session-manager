@@ -81,6 +81,19 @@ class DetailPanel(Vertical):
         self._tracking_session_id = session_id
         self._last_line_count = 0
 
+    def search_output(self, term: str, lines: list[str]) -> None:
+        """Search and highlight matching lines in the output."""
+        self._log.clear()
+        matches = 0
+        for line in lines:
+            if term.lower() in line.lower():
+                self._log.write(f"[bold yellow]>>> {line}[/bold yellow]")
+                matches += 1
+            else:
+                self._log.write(line)
+        self._last_line_count = len(lines)
+        return matches
+
     def refresh_from_buffer(self, session_id: str, lines: list[str]) -> None:
         """Incrementally append new lines from a ring buffer."""
         if session_id != self._tracking_session_id:

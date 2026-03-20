@@ -152,6 +152,42 @@ class ConfirmDeleteModal(ModalScreen):
         self.dismiss(False)
 
 
+class SearchInputModal(ModalScreen):
+    """Modal for searching output text."""
+
+    CSS = """
+    SearchInputModal { align: center middle; }
+    #dialog {
+        width: 60;
+        height: auto;
+        border: thick $accent;
+        padding: 1 2;
+    }
+    """
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="dialog"):
+            yield Static("Search output:")
+            yield Input(placeholder="Enter search term...", id="search_input")
+            with Horizontal():
+                yield Button("Search", variant="primary", id="search_btn")
+                yield Button("Cancel", id="cancel_btn")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "search_btn":
+            term = self.query_one("#search_input", Input).value.strip()
+            self.dismiss(term or None)
+        else:
+            self.dismiss(None)
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        term = event.value.strip()
+        self.dismiss(term or None)
+
+    def key_escape(self) -> None:
+        self.dismiss(None)
+
+
 class CommandInputModal(ModalScreen):
     """Modal for entering a command to send to a session.
 
