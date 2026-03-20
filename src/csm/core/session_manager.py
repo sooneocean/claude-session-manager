@@ -138,20 +138,24 @@ class SessionManager:
         initial_prompt = "continue" if config.resume_id else "hello, ready to work"
 
         state.status = SessionStatus.RUN
+        state.track_run_start()
 
         # Run initial claude call in background task (non-blocking)
         async def _background_spawn():
             try:
                 result = await self._run_claude(state, initial_prompt)
                 if result is not None:
+                    state.track_run_end()
                     state.status = SessionStatus.WAIT
                 else:
                     # Retry once — reset status before second attempt
                     state.status = SessionStatus.RUN
                     result = await self._run_claude(state, initial_prompt)
+                    state.track_run_end()
                     state.status = SessionStatus.WAIT if result is not None else SessionStatus.DEAD
             except Exception as e:
                 logger.error("Spawn failed for session %s: %s", state.session_id, e)
+                state.track_run_end()
                 state.status = SessionStatus.DEAD
 
         import asyncio
@@ -174,20 +178,24 @@ class SessionManager:
             raise RuntimeError("Cannot send command to DEAD session")
 
         state.status = SessionStatus.RUN
+        state.track_run_start()
 
         async def _background_command():
             try:
                 result = await self._run_claude(state, command)
                 if result is not None:
+                    state.track_run_end()
                     state.status = SessionStatus.WAIT
                     await self._auto_compact_if_needed(state)
                 else:
                     # Retry once — reset status before second attempt
                     state.status = SessionStatus.RUN
                     result = await self._run_claude(state, command)
+                    state.track_run_end()
                     state.status = SessionStatus.WAIT if result is not None else SessionStatus.DEAD
             except Exception as e:
                 logger.error("Command failed for session %s: %s", state.session_id, e)
+                state.track_run_end()
                 state.status = SessionStatus.DEAD
 
         import asyncio
@@ -312,13 +320,22 @@ class SessionManager:
 
         cmd.append(prompt)
 
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            cwd=state.config.cwd,
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                cwd=state.config.cwd,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+        except FileNotFoundError:
+            logger.error("Claude CLI not found. Ensure 'claude' is on PATH.")
+            state.status = SessionStatus.DEAD
+            return None
+        except OSError as e:
+            logger.error("Failed to launch claude process: %s", e)
+            state.status = SessionStatus.DEAD
+            return None
         self._running_processes[state.session_id] = proc
 
         # Stream stdout line-by-line for real-time updates

@@ -8,6 +8,7 @@ from csm.models.session import SessionState, SessionConfig, SessionStatus
 logger = logging.getLogger(__name__)
 
 DEFAULT_SESSIONS_PATH = Path.home() / ".csm" / "sessions.json"
+DEFAULT_LOGS_DIR = Path.home() / ".csm" / "logs"
 
 
 def _serialize_session(state: SessionState) -> dict:
@@ -32,6 +33,7 @@ def _serialize_session(state: SessionState) -> dict:
         "notes": state.notes,
         "tags": state.tags,
         "command_history": state.command_history[-50:],  # Keep last 50
+        "total_active_seconds": state.total_active_seconds,
     }
 
 
@@ -59,6 +61,7 @@ def _deserialize_session(data: dict) -> SessionState:
     state.notes = data.get("notes", "")
     state.tags = data.get("tags", [])
     state.command_history = data.get("command_history", [])
+    state.total_active_seconds = data.get("total_active_seconds", 0.0)
     return state
 
 
@@ -91,3 +94,44 @@ def load_sessions(
     except (json.JSONDecodeError, KeyError, ValueError) as e:
         logger.warning("Failed to load sessions from %s: %s", path, e)
         return []
+
+
+# ------------------------------------------------------------------
+# Log persistence — save/load per-session output buffer lines
+# ------------------------------------------------------------------
+
+def save_session_logs(
+    session_id: str,
+    lines: list[str],
+    logs_dir: Path = DEFAULT_LOGS_DIR,
+) -> None:
+    """Save a session's output buffer lines to a JSON file."""
+    logs_dir = Path(logs_dir)
+    logs_dir.mkdir(parents=True, exist_ok=True)
+    filepath = logs_dir / f"{session_id}.json"
+    filepath.write_text(json.dumps(lines, ensure_ascii=False), encoding="utf-8")
+
+
+def load_session_logs(
+    session_id: str,
+    logs_dir: Path = DEFAULT_LOGS_DIR,
+) -> list[str]:
+    """Load a session's saved output buffer lines. Returns empty list if not found."""
+    filepath = Path(logs_dir) / f"{session_id}.json"
+    if not filepath.exists():
+        return []
+    try:
+        raw = filepath.read_text(encoding="utf-8")
+        data = json.loads(raw)
+        return data if isinstance(data, list) else []
+    except (json.JSONDecodeError, ValueError):
+        return []
+
+
+def delete_session_logs(
+    session_id: str,
+    logs_dir: Path = DEFAULT_LOGS_DIR,
+) -> None:
+    """Remove a session's saved log file."""
+    filepath = Path(logs_dir) / f"{session_id}.json"
+    filepath.unlink(missing_ok=True)

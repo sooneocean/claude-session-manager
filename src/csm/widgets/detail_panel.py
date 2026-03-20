@@ -3,6 +3,7 @@ from textual.widgets import RichLog, Static
 from textual.containers import Vertical
 
 from csm.models.session import SessionState, SessionStatus
+from csm.utils.ansi import strip_ansi
 
 
 class SessionHeader(Static):
@@ -29,7 +30,8 @@ class SessionHeader(Static):
         tokens = f"{session.tokens_in + session.tokens_out:,}"
         cost = f"${session.cost_usd:.2f}"
         model = session.config.model or "default"
-        text = f" [{style}]{status}[/{style}]  {name}  |  {model}  |  {tokens} tokens  |  {cost}"
+        active = session.active_duration_str
+        text = f" [{style}]{status}[/{style}]  {name}  |  {model}  |  {tokens} tokens  |  {cost}  |  Active: {active}"
         if session.notes:
             text += f"  | [italic]{session.notes}[/italic]"
         self.update(text)
@@ -42,6 +44,9 @@ class DetailPanel(Vertical):
         super().__init__(**kwargs)
         self._tracking_session_id: str | None = None
         self._last_line_count: int = 0
+        self._strip_ansi: bool = True
+        self._word_wrap: bool = True
+        self._paused: bool = False  # Pause auto-scrolling
 
     def compose(self):
         yield SessionHeader(id="session_header")
@@ -62,11 +67,26 @@ class DetailPanel(Vertical):
         """Update the session info header."""
         self._header.update_session(session)
 
+    def _process_line(self, line: str) -> str:
+        """Apply ANSI stripping if enabled."""
+        return strip_ansi(line) if self._strip_ansi else line
+
+    def toggle_ansi_strip(self) -> bool:
+        """Toggle ANSI escape stripping. Returns new state."""
+        self._strip_ansi = not self._strip_ansi
+        return self._strip_ansi
+
+    def toggle_word_wrap(self) -> bool:
+        """Toggle word wrap. Returns new state."""
+        self._word_wrap = not self._word_wrap
+        self._log.wrap = self._word_wrap
+        return self._word_wrap
+
     def show_output(self, lines: list[str]) -> None:
         """Display lines from a session's ring buffer (batch mode)."""
         self._log.clear()
         for line in lines:
-            self._log.write(line)
+            self._log.write(self._process_line(line))
         self._last_line_count = len(lines)
 
     def show_placeholder(self) -> None:
@@ -95,19 +115,30 @@ class DetailPanel(Vertical):
         self._last_line_count = len(lines)
         return matches
 
+    def toggle_pause(self) -> bool:
+        """Toggle pause/resume auto-scrolling. Returns new state."""
+        self._paused = not self._paused
+        return self._paused
+
+    @property
+    def is_paused(self) -> bool:
+        return self._paused
+
     def refresh_from_buffer(self, session_id: str, lines: list[str]) -> None:
         """Incrementally append new lines from a ring buffer."""
         if session_id != self._tracking_session_id:
             return
+        if self._paused:
+            return  # Don't update while paused
 
         new_count = len(lines)
         if new_count < self._last_line_count:
             # Buffer wrapped — do a full refresh
             self._log.clear()
             for line in lines:
-                self._log.write(line)
+                self._log.write(self._process_line(line))
             self._last_line_count = new_count
         elif new_count > self._last_line_count:
             for line in lines[self._last_line_count:]:
-                self._log.write(line)
+                self._log.write(self._process_line(line))
             self._last_line_count = new_count

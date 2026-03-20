@@ -22,11 +22,15 @@ from csm.core.session_manager import (
     DuplicateSessionError,
 )
 from csm.core.command_dispatcher import CommandDispatcher, QueueFullError, SessionDeadError
-from csm.core.persistence import save_sessions, load_sessions
+from csm.core.persistence import (
+    save_sessions, load_sessions,
+    save_session_logs, load_session_logs, delete_session_logs,
+)
 from csm.models.session import SessionConfig, SessionStatus
 from csm.widgets.session_list import SessionList, SortKey
 from csm.widgets.detail_panel import DetailPanel
 from csm.widgets.stats_panel import StatsPanel
+from csm.core.templates import save_template, load_templates, list_template_names
 from csm.widgets.modals import (
     NewSessionModal,
     ConfirmStopModal,
@@ -39,6 +43,9 @@ from csm.widgets.modals import (
     RunningWarningModal,
     HelpModal,
     WelcomeScreen,
+    TemplateSelectModal,
+    SaveTemplateModal,
+    CommandPaletteModal,
 )
 
 
@@ -69,6 +76,11 @@ class CSMApp(App):
         Binding("s", "sort_sessions", "Sort"),
         Binding("h", "show_help", "Help"),
         Binding("i", "show_stats", "Stats"),
+        Binding("p", "spawn_from_template", "Template"),
+        Binding("ctrl+t", "save_as_template", "Save Tpl", show=False),
+        Binding("ctrl+p", "command_palette", "Palette", show=False),
+        Binding("w", "toggle_wrap", "Wrap", show=False),
+        Binding("space", "toggle_pause", "Pause", show=False),
         *[Binding(str(k), f"jump_to_session({k})", f"Session {k}", show=False) for k in range(1, 10)],
     ]
 
@@ -95,6 +107,9 @@ class CSMApp(App):
         # Restore sessions from previous run
         self._restore_sessions()
         self.set_interval(self._config.refresh_interval, self._refresh_display)
+        # Auto-save timer
+        if self._config.auto_save_interval > 0:
+            self.set_interval(self._config.auto_save_interval, self._auto_save)
         # First-run welcome
         self._check_first_run()
 
@@ -119,9 +134,13 @@ class CSMApp(App):
         saved = load_sessions()
         for state in saved:
             self._session_manager._sessions[state.session_id] = state
-            self._session_manager._buffer_store.create(
+            buf = self._session_manager._buffer_store.create(
                 state.session_id, self._config.output_buffer_capacity
             )
+            # Restore saved output logs into the ring buffer
+            saved_lines = load_session_logs(state.session_id)
+            for line in saved_lines:
+                buf.append(line)
             self._session_manager._cost_aggregator.update(
                 state.session_id, state.tokens_in, state.tokens_out, state.cost_usd
             )
@@ -129,8 +148,25 @@ class CSMApp(App):
         if saved:
             self.notify(f"Restored {len(saved)} sessions")
 
+    def _auto_save(self) -> None:
+        """Periodically save sessions and logs for crash recovery."""
+        sessions = self._session_manager.get_sessions()
+        if not sessions:
+            return
+        save_sessions(sessions)
+        for s in sessions:
+            buf = self._session_manager.buffer_store.get(s.session_id)
+            if buf is not None and len(buf) > 0:
+                save_session_logs(s.session_id, buf.get_lines())
+
     def _refresh_display(self) -> None:
         """Refresh the session list, status bar, and detail panel (incremental)."""
+        try:
+            self._do_refresh()
+        except Exception:
+            pass  # Never let a display refresh crash the app
+
+    def _do_refresh(self) -> None:
         sessions = self._session_manager.get_sessions()
         session_list = self.query_one("#session_list", SessionList)
         session_list.update_sessions(sessions)
@@ -186,6 +222,11 @@ class CSMApp(App):
         # Session limit warning
         if active >= self._session_manager.SESSION_LIMIT:
             status_text += " [bold red]LIMIT REACHED[/bold red]"
+
+        # Pause indicator
+        panel = self.query_one("#detail_panel", DetailPanel)
+        if panel.is_paused:
+            status_text += " [bold yellow]PAUSED[/bold yellow]"
 
         self.query_one("#status_bar", Static).update(status_text)
 
@@ -301,6 +342,7 @@ class CSMApp(App):
             sid = self._selected_session_id
             self._dispatcher.cleanup_session(sid)
             await self._session_manager.remove(sid)
+            delete_session_logs(sid)
             self._budget_warned.discard(sid)
             self._restart_counts.pop(sid, None)
             self._restarting.discard(sid)
@@ -552,6 +594,7 @@ class CSMApp(App):
         for s in removable:
             self._dispatcher.cleanup_session(s.session_id)
             await self._session_manager.remove(s.session_id)
+            delete_session_logs(s.session_id)
             self._budget_warned.discard(s.session_id)
             self._restart_counts.pop(s.session_id, None)
             self._restarting.discard(s.session_id)
@@ -581,6 +624,88 @@ class CSMApp(App):
             except (IndexError, KeyError):
                 pass
 
+    def action_spawn_from_template(self) -> None:
+        """Spawn a new session from a saved template."""
+        self._do_spawn_from_template()
+
+    @work
+    async def _do_spawn_from_template(self) -> None:
+        names = list_template_names()
+        if not names:
+            self.notify("No templates saved. Select a session and press Ctrl+T to save one.", severity="warning")
+            return
+        selected = await self.push_screen_wait(TemplateSelectModal(names))
+        if not selected:
+            return
+        templates = load_templates()
+        tpl = templates.get(selected)
+        if not tpl:
+            return
+        config = SessionConfig(
+            cwd=tpl.get("cwd", os.getcwd()),
+            model=tpl.get("model"),
+            permission_mode=tpl.get("permission_mode", "auto"),
+            name=tpl.get("name"),
+            max_budget_usd=tpl.get("max_budget_usd"),
+        )
+        try:
+            sid = await self._session_manager.spawn(config)
+            self._dispatcher.register_session(sid)
+            self._refresh_display()
+            self.notify(f"Spawned from template '{selected}'")
+        except Exception as e:
+            self.notify(str(e), severity="error")
+
+    def action_save_as_template(self) -> None:
+        """Save the selected session's config as a reusable template."""
+        self._do_save_as_template()
+
+    @work
+    async def _do_save_as_template(self) -> None:
+        if not self._selected_session_id:
+            self.notify("No session selected", severity="warning")
+            return
+        session = self._session_manager.get_session(self._selected_session_id)
+        if not session:
+            return
+        suggested = session.config.name or os.path.basename(session.config.cwd)
+        name = await self.push_screen_wait(SaveTemplateModal(suggested))
+        if not name:
+            return
+        save_template(name, {
+            "cwd": session.config.cwd,
+            "model": session.config.model,
+            "permission_mode": session.config.permission_mode,
+            "name": session.config.name,
+            "max_budget_usd": session.config.max_budget_usd,
+        })
+        self.notify(f"Template '{name}' saved")
+
+    def action_toggle_pause(self) -> None:
+        """Toggle pause/resume output auto-scrolling."""
+        panel = self.query_one("#detail_panel", DetailPanel)
+        paused = panel.toggle_pause()
+        self.notify(f"Output scroll: {'paused' if paused else 'resumed'}")
+
+    def action_toggle_wrap(self) -> None:
+        """Toggle word wrap in the detail panel."""
+        panel = self.query_one("#detail_panel", DetailPanel)
+        state = panel.toggle_word_wrap()
+        self.notify(f"Word wrap: {'on' if state else 'off'}")
+
+    def action_command_palette(self) -> None:
+        """Open command palette for quick action search."""
+        self._do_command_palette()
+
+    @work
+    async def _do_command_palette(self) -> None:
+        action_id = await self.push_screen_wait(CommandPaletteModal())
+        if action_id:
+            try:
+                await self.run_action(action_id)
+            except Exception:
+                self.notify(f"Action '{action_id}' failed", severity="error")
+
     def action_show_help(self) -> None:
         self.push_screen(HelpModal())
 
@@ -591,6 +716,10 @@ class CSMApp(App):
         for s in sessions:
             if s.status in (SessionStatus.RUN, SessionStatus.STARTING):
                 s.status = SessionStatus.DEAD
+            # Save output buffer logs per session
+            buf = self._session_manager.buffer_store.get(s.session_id)
+            if buf is not None:
+                save_session_logs(s.session_id, buf.get_lines())
         save_sessions(sessions)
         await self._dispatcher.shutdown()
         await self._session_manager.shutdown()

@@ -21,6 +21,7 @@ class UserConfig:
     refresh_interval: float = 1.0
     auto_restart_dead: bool = False
     auto_restart_max: int = 3
+    auto_save_interval: float = 60.0  # seconds between auto-saves (0 = disabled)
 
 
 def load_config(path: Path = DEFAULT_CONFIG_PATH) -> UserConfig:
@@ -41,6 +42,7 @@ def load_config(path: Path = DEFAULT_CONFIG_PATH) -> UserConfig:
             refresh_interval=max(0.5, data.get("refresh_interval", 1.0)),
             auto_restart_dead=data.get("auto_restart_dead", False),
             auto_restart_max=max(0, data.get("auto_restart_max", 3)),
+            auto_save_interval=max(0, data.get("auto_save_interval", 60.0)),
         )
     except (json.JSONDecodeError, ValueError) as e:
         logger.warning("Failed to load config from %s: %s", path, e)
@@ -61,6 +63,7 @@ def save_default_config(path: Path = DEFAULT_CONFIG_PATH) -> None:
         "refresh_interval": 1.0,
         "auto_restart_dead": False,
         "auto_restart_max": 3,
+        "auto_save_interval": 60.0,
     }
     path.write_text(json.dumps(default, indent=2), encoding="utf-8")
     logger.info("Wrote default config to %s", path)

@@ -41,6 +41,8 @@ class SessionState:
     notes: str = ""  # User-defined notes/annotations
     tags: list[str] = field(default_factory=list)  # User-defined tags
     command_history: list[str] = field(default_factory=list)  # Recent commands sent
+    total_active_seconds: float = 0.0  # Accumulated RUN-state time
+    _run_started: datetime | None = field(default=None, repr=False)  # Internal: when last RUN started
 
     @staticmethod
     def create(config: SessionConfig) -> "SessionState":
@@ -48,3 +50,27 @@ class SessionState:
             session_id=str(uuid.uuid4()),
             config=config,
         )
+
+    def track_run_start(self) -> None:
+        """Mark the start of a RUN period for duration tracking."""
+        self._run_started = datetime.now()
+
+    def track_run_end(self) -> None:
+        """Accumulate elapsed RUN time when transitioning out of RUN."""
+        if self._run_started is not None:
+            elapsed = (datetime.now() - self._run_started).total_seconds()
+            self.total_active_seconds += max(0, elapsed)
+            self._run_started = None
+
+    @property
+    def active_duration_str(self) -> str:
+        """Human-readable total active (RUN) duration."""
+        secs = int(self.total_active_seconds)
+        if self._run_started:
+            secs += max(0, int((datetime.now() - self._run_started).total_seconds()))
+        if secs < 60:
+            return f"{secs}s"
+        elif secs < 3600:
+            return f"{secs // 60}m {secs % 60}s"
+        h, rem = divmod(secs, 3600)
+        return f"{h}h {rem // 60}m"

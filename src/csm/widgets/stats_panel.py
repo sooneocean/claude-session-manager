@@ -73,10 +73,13 @@ class StatsPanel(ModalScreen):
             color = status_colors.get(status, "white")
             lines.append(f"  [{color}]{status.value}[/{color}]: {count}")
 
+        total_active = sum(s.total_active_seconds for s in sessions)
+        active_min = int(total_active / 60)
         lines.extend([
             "",
             f"[bold]Cost:[/bold] ${total_cost:.2f} total, ${avg_cost:.2f} avg",
             f"[bold]Tokens:[/bold] {total_tokens_in:,} in / {total_tokens_out:,} out",
+            f"[bold]Active Time:[/bold] {active_min}m total across all sessions",
         ])
 
         if models:

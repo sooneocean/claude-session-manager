@@ -255,6 +255,16 @@ class CommandInputModal(ModalScreen):
 
     CSS = _modal_css("CommandInputModal", "$accent", 70)
 
+    QUICK_COMMANDS = [
+        "/compact",
+        "/help",
+        "/cost",
+        "/status",
+        "/clear",
+        "/review",
+        "/test",
+    ]
+
     def __init__(self, session_name: str, history: list[str] | None = None) -> None:
         super().__init__()
         self._session_name = session_name
@@ -264,9 +274,14 @@ class CommandInputModal(ModalScreen):
 
     def compose(self) -> ComposeResult:
         hint = f" ({len(self._history)} in history)" if self._history else ""
+        quick_btns = " ".join(f"[bold]{c}[/bold]" for c in self.QUICK_COMMANDS[:4])
         with Vertical(id="dialog"):
             yield Static(f"Send command to '{self._session_name}':{hint}")
             yield Input(placeholder="Enter your command... (↑↓ history)", id="cmd_input")
+            yield Static(f"[dim]Quick: {quick_btns}[/dim]", id="quick_hint")
+            with Horizontal(id="quick_bar"):
+                for cmd in self.QUICK_COMMANDS:
+                    yield Button(cmd, id=f"qcmd_{cmd.strip('/')}")
             with Horizontal():
                 yield Button("Send", variant="primary", id="send_btn")
                 yield Button("Cancel", id="cancel_btn")
@@ -275,8 +290,11 @@ class CommandInputModal(ModalScreen):
         if event.button.id == "send_btn":
             cmd = self.query_one("#cmd_input", Input).value.strip()
             self.dismiss(cmd or None)
-        else:
+        elif event.button.id == "cancel_btn":
             self.dismiss(None)
+        elif event.button.id and event.button.id.startswith("qcmd_"):
+            cmd = "/" + event.button.id.removeprefix("qcmd_")
+            self.dismiss(cmd)
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         cmd = event.value.strip()
@@ -406,6 +424,129 @@ Press [bold]N[/bold] to get started, or [bold]Esc[/bold] to close.
         self.dismiss(False)
 
 
+class TemplateSelectModal(ModalScreen):
+    """Modal for selecting a session template to spawn."""
+
+    CSS = _modal_css("TemplateSelectModal", "$accent", 60)
+
+    def __init__(self, template_names: list[str]) -> None:
+        super().__init__()
+        self._template_names = template_names
+
+    def compose(self) -> ComposeResult:
+        options = [(name, name) for name in self._template_names]
+        with Vertical(id="dialog"):
+            yield Static("[bold]Spawn from Template[/bold]")
+            if options:
+                yield Select(options, prompt="Choose template...", id="template_select")
+                with Horizontal():
+                    yield Button("Spawn", variant="primary", id="spawn_btn")
+                    yield Button("Cancel", id="cancel_btn")
+            else:
+                yield Static("[dim]No templates saved. Use Ctrl+T to save current session as template.[/dim]")
+                yield Button("Close", id="cancel_btn")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "spawn_btn":
+            sel = self.query_one("#template_select", Select)
+            self.dismiss(sel.value if sel.value != Select.BLANK else None)
+        else:
+            self.dismiss(None)
+
+    def key_escape(self) -> None:
+        self.dismiss(None)
+
+
+class SaveTemplateModal(ModalScreen):
+    """Modal for saving current session config as a template."""
+
+    CSS = _modal_css("SaveTemplateModal", "$accent")
+
+    def __init__(self, suggested_name: str = "") -> None:
+        super().__init__()
+        self._suggested_name = suggested_name
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="dialog"):
+            yield Static("[bold]Save as Template[/bold]")
+            yield Static("Template name:")
+            yield Input(value=self._suggested_name, placeholder="my-template", id="name_input")
+            with Horizontal():
+                yield Button("Save", variant="primary", id="save_btn")
+                yield Button("Cancel", id="cancel_btn")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "save_btn":
+            self.dismiss(self.query_one("#name_input", Input).value.strip() or None)
+        else:
+            self.dismiss(None)
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        self.dismiss(event.value.strip() or None)
+
+    def key_escape(self) -> None:
+        self.dismiss(None)
+
+
+class CommandPaletteModal(ModalScreen):
+    """Quick action search — fuzzy match all available actions."""
+
+    CSS = _modal_css("CommandPaletteModal", "$accent", 55)
+
+    ACTIONS = [
+        ("new_session", "N", "New Session"),
+        ("send_command", "Enter", "Send Command"),
+        ("stop_session", "X", "Stop Session"),
+        ("delete_session", "D", "Delete Session"),
+        ("restart_session", "R", "Restart Session"),
+        ("export_log", "E", "Export Log"),
+        ("duplicate_session", "C", "Clone Session"),
+        ("broadcast_command", "B", "Broadcast Command"),
+        ("filter_sessions", "/", "Filter by Status"),
+        ("sort_sessions", "S", "Sort Sessions"),
+        ("search_output", "F", "Search Output"),
+        ("annotate_session", "A", "Add Note"),
+        ("tag_session", "T", "Add Tag"),
+        ("rename_session", "M", "Rename Session"),
+        ("show_stats", "I", "Dashboard Stats"),
+        ("spawn_from_template", "P", "Spawn from Template"),
+        ("save_as_template", "Ctrl+T", "Save as Template"),
+        ("stop_all", "Shift+X", "Stop All"),
+        ("delete_all_done", "Shift+D", "Delete All Done"),
+        ("show_help", "H", "Help"),
+        ("quit_app", "Q", "Quit"),
+    ]
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="dialog"):
+            yield Static("[bold]Command Palette[/bold]")
+            yield Input(placeholder="Type to filter actions...", id="filter_input")
+            yield Static(self._render_list(""), id="action_list")
+
+    def _render_list(self, query: str) -> str:
+        lines = []
+        q = query.lower()
+        for action_id, key, label in self.ACTIONS:
+            if q and q not in label.lower() and q not in action_id.lower():
+                continue
+            lines.append(f"  [bold]{key:>8}[/bold]  {label}")
+        return "\n".join(lines) if lines else "[dim]No matching actions[/dim]"
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        self.query_one("#action_list", Static).update(self._render_list(event.value))
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        q = event.value.lower().strip()
+        for action_id, _key, label in self.ACTIONS:
+            if q in label.lower() or q in action_id.lower():
+                self.dismiss(action_id)
+                return
+        self.dismiss(None)
+
+    def key_escape(self) -> None:
+        self.dismiss(None)
+
+
 class HelpModal(ModalScreen):
     """Help screen showing keyboard shortcuts and usage info."""
 
@@ -414,32 +555,32 @@ class HelpModal(ModalScreen):
     HELP_TEXT = """\
 [bold]Claude Session Manager (CSM)[/bold]
 
-[bold underline]Keyboard Shortcuts[/bold underline]
+[bold underline]Session Management[/bold underline]
 
-  [bold]N[/bold]     New session (specify dir, name, model)
-  [bold]Enter[/bold] Send command to selected session
-  [bold]X[/bold]     Stop selected session
-  [bold]D[/bold]     Delete DONE/DEAD session from list
-  [bold]R[/bold]     Restart selected session
-  [bold]E[/bold]     Export session output to file
-  [bold]B[/bold]     Broadcast command to all WAIT sessions
-  [bold]/[/bold]     Filter by status (cycle: All/RUN/WAIT/DEAD/DONE)
-  [bold]S[/bold]     Sort (cycle: None/Cost/Status/Stage)
-  [bold]H[/bold]     This help screen
-  [bold]Q[/bold]     Quit (sessions are saved)
+  [bold]N[/bold]       New session          [bold]P[/bold]       Spawn from template
+  [bold]Enter[/bold]   Send command         [bold]B[/bold]       Broadcast to all WAIT
+  [bold]X[/bold]       Stop session         [bold]Shift+X[/bold] Stop all
+  [bold]D[/bold]       Delete session       [bold]Shift+D[/bold] Delete all done
+  [bold]R[/bold]       Restart session      [bold]C[/bold]       Clone session
+
+[bold underline]Organization[/bold underline]
+
+  [bold]M[/bold]       Rename               [bold]A[/bold]       Add note
+  [bold]T[/bold]       Add tag              [bold]Shift+T[/bold] Filter by tag
+  [bold]/[/bold]       Filter by status     [bold]S[/bold]       Sort sessions
+  [bold]1-9[/bold]     Quick-switch         [bold]I[/bold]       Dashboard stats
+
+[bold underline]Output & Tools[/bold underline]
+
+  [bold]F[/bold]       Search output        [bold]E[/bold]       Export to file
+  [bold]W[/bold]       Toggle word wrap     [bold]Space[/bold]   Pause/resume scroll
+  [bold]Ctrl+T[/bold]  Save as template     [bold]Ctrl+P[/bold]  Command palette
+  [bold]H[/bold]       This help            [bold]Q[/bold]       Quit (auto-saves)
 
 [bold underline]Session States[/bold underline]
 
-  [green]RUN[/green]   Claude is processing a command
-  [yellow]WAIT[/yellow]  Ready for your next command
-  [red]DEAD[/red]  Process crashed (press R to restart)
-  [dim]DONE[/dim]  Session stopped normally
-
-[bold underline]Architecture[/bold underline]
-
-  Each interaction spawns: claude -p --resume --output-format stream-json
-  Output is streamed line-by-line to the detail panel in real-time.
-  Sessions persist to ~/.csm/sessions.json on quit.
+  [green]RUN[/green]   Claude is processing    [yellow]WAIT[/yellow]  Ready for commands
+  [red]DEAD[/red]  Process crashed          [dim]DONE[/dim]  Stopped normally
 """
 
     def compose(self) -> ComposeResult:

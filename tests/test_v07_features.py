@@ -178,4 +178,4 @@ class TestHelpModal:
         from csm.widgets.modals import HelpModal
         assert HelpModal is not None
         assert hasattr(HelpModal, "HELP_TEXT")
-        assert "Keyboard Shortcuts" in HelpModal.HELP_TEXT
+        assert "Session Management" in HelpModal.HELP_TEXT
