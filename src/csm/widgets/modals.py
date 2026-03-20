@@ -32,6 +32,14 @@ class NewSessionModal(ModalScreen):
         ("full", "full"),
     ]
 
+    def __init__(self, default_model: str | None = None,
+                 default_permission: str = "auto",
+                 default_budget: float | None = None) -> None:
+        super().__init__()
+        self._default_model = default_model or ""
+        self._default_permission = default_permission
+        self._default_budget = str(default_budget) if default_budget else ""
+
     def compose(self) -> ComposeResult:
         default_cwd = os.getcwd()
         with Vertical(id="dialog"):
@@ -43,11 +51,11 @@ class NewSessionModal(ModalScreen):
             yield Static("Resume ID (optional):")
             yield Input(placeholder="session-id", id="resume_input")
             yield Static("Model (optional):")
-            yield Input(placeholder="sonnet / opus", id="model_input")
+            yield Input(value=self._default_model, placeholder="sonnet / opus", id="model_input")
             yield Static("Permission Mode:")
-            yield Select(self.PERMISSION_MODES, value="auto", id="permission_select")
+            yield Select(self.PERMISSION_MODES, value=self._default_permission, id="permission_select")
             yield Static("Max Budget USD (optional):")
-            yield Input(placeholder="e.g. 5.00", id="budget_input")
+            yield Input(value=self._default_budget, placeholder="e.g. 5.00", id="budget_input")
             with Horizontal():
                 yield Button("Create", variant="primary", id="create_btn")
                 yield Button("Cancel", id="cancel_btn")

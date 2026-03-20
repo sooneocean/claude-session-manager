@@ -15,6 +15,7 @@ from textual.widgets import Header, Footer, Static
 from textual.containers import Horizontal
 from textual.binding import Binding
 
+from csm.core.config import load_config, UserConfig
 from csm.core.session_manager import (
     SessionManager,
     DirectoryNotFoundError,
@@ -72,13 +73,18 @@ class CSMApp(App):
         yield Footer()
 
     def on_mount(self) -> None:
-        self._session_manager = SessionManager()
+        self._config = load_config()
+        self._session_manager = SessionManager(
+            session_limit=self._config.session_limit,
+            auto_compact_threshold=self._config.auto_compact_threshold,
+            buffer_capacity=self._config.output_buffer_capacity,
+        )
         self._dispatcher = CommandDispatcher(self._session_manager)
         self._selected_session_id: str | None = None
         self._budget_warned: set[str] = set()  # session_ids already warned
         # Restore sessions from previous run
         self._restore_sessions()
-        self.set_interval(1.0, self._refresh_display)
+        self.set_interval(self._config.refresh_interval, self._refresh_display)
         # First-run welcome
         self._check_first_run()
 
@@ -173,7 +179,11 @@ class CSMApp(App):
 
     @work
     async def _do_new_session(self) -> None:
-        config = await self.push_screen_wait(NewSessionModal())
+        config = await self.push_screen_wait(NewSessionModal(
+            default_model=self._config.default_model,
+            default_permission=self._config.default_permission_mode,
+            default_budget=self._config.default_max_budget_usd,
+        ))
         if config:
             try:
                 sid = await self._session_manager.spawn(config)

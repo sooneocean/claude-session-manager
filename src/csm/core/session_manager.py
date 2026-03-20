@@ -50,7 +50,14 @@ class SessionManager:
     SESSION_LIMIT = 20
     AUTO_COMPACT_TOKEN_THRESHOLD = 50000  # tokens_in + tokens_out
 
-    def __init__(self) -> None:
+    def __init__(self, session_limit: int | None = None,
+                 auto_compact_threshold: int | None = None,
+                 buffer_capacity: int | None = None) -> None:
+        if session_limit is not None:
+            self.SESSION_LIMIT = session_limit
+        if auto_compact_threshold is not None:
+            self.AUTO_COMPACT_TOKEN_THRESHOLD = auto_compact_threshold
+        self._buffer_capacity = buffer_capacity or 1000
         self._sessions: dict[str, SessionState] = {}
         self._parser = OutputParser()
         self._cost_aggregator = CostAggregator()
