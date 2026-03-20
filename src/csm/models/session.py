@@ -40,6 +40,7 @@ class SessionState:
     last_result: str = ""  # Most recent response text
     notes: str = ""  # User-defined notes/annotations
     tags: list[str] = field(default_factory=list)  # User-defined tags
+    command_history: list[str] = field(default_factory=list)  # Recent commands sent
 
     @staticmethod
     def create(config: SessionConfig) -> "SessionState":

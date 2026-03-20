@@ -31,6 +31,7 @@ def _serialize_session(state: SessionState) -> dict:
         "last_result": state.last_result,
         "notes": state.notes,
         "tags": state.tags,
+        "command_history": state.command_history[-50:],  # Keep last 50
     }
 
 
@@ -57,6 +58,7 @@ def _deserialize_session(data: dict) -> SessionState:
     state.last_result = data.get("last_result", "")
     state.notes = data.get("notes", "")
     state.tags = data.get("tags", [])
+    state.command_history = data.get("command_history", [])
     return state
 
 

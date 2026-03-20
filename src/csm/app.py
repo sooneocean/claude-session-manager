@@ -35,6 +35,7 @@ from csm.widgets.modals import (
     SearchInputModal,
     NoteInputModal,
     TagInputModal,
+    RenameModal,
     RunningWarningModal,
     HelpModal,
     WelcomeScreen,
@@ -62,6 +63,7 @@ class CSMApp(App):
         Binding("f", "search_output", "Search"),
         Binding("a", "annotate_session", "Note"),
         Binding("t", "tag_session", "Tag"),
+        Binding("m", "rename_session", "Rename"),
         Binding("T", "filter_by_tag", "Tag Filter", show=False),
         Binding("slash", "filter_sessions", "Filter"),
         Binding("s", "sort_sessions", "Sort"),
@@ -242,10 +244,13 @@ class CSMApp(App):
                 return
 
         dir_name = os.path.basename(session.config.cwd) or session.config.cwd
-        cmd = await self.push_screen_wait(CommandInputModal(dir_name))
+        cmd = await self.push_screen_wait(
+            CommandInputModal(dir_name, history=session.command_history)
+        )
         if cmd:
             try:
                 await self._dispatcher.enqueue(self._selected_session_id, cmd)
+                session.command_history.append(cmd)
                 self.notify("Command sent")
             except (QueueFullError, SessionDeadError) as e:
                 self.notify(str(e), severity="error")
@@ -343,6 +348,25 @@ class CSMApp(App):
             next_tag = all_tags[0]
         session_list._filter_tag = next_tag
         self.notify(f"Tag filter: {next_tag or 'None'}")
+
+    def action_rename_session(self) -> None:
+        """Rename the selected session."""
+        self._do_rename_session()
+
+    @work
+    async def _do_rename_session(self) -> None:
+        if not self._selected_session_id:
+            self.notify("No session selected", severity="warning")
+            return
+        session = self._session_manager.get_session(self._selected_session_id)
+        if not session:
+            return
+        current = session.config.name or os.path.basename(session.config.cwd)
+        new_name = await self.push_screen_wait(RenameModal(current))
+        if new_name is not None:
+            session.config.name = new_name
+            self._refresh_display()
+            self.notify(f"Renamed to '{new_name}'")
 
     def action_search_output(self) -> None:
         """Search within the selected session's output."""

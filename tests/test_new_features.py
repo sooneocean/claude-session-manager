@@ -186,3 +186,37 @@ class TestNewModals:
         assert m._default_model == "opus"
         assert m._default_permission == "full"
         assert m._default_budget == "10.0"
+
+    def test_rename_modal(self):
+        from csm.widgets.modals import RenameModal
+        m = RenameModal("old-name")
+        assert m._current_name == "old-name"
+
+
+# --- Command history (v0.22) ---
+
+class TestCommandHistory:
+    def test_command_history_default(self):
+        s = SessionState.create(SessionConfig(cwd="/test"))
+        assert s.command_history == []
+
+    def test_command_history_persists(self, tmp_path):
+        s = SessionState.create(SessionConfig(cwd="/test"))
+        s.command_history = ["hello", "do something"]
+        s.status = SessionStatus.WAIT
+        path = tmp_path / "sessions.json"
+        save_sessions([s], path)
+        loaded = load_sessions(path)
+        assert loaded[0].command_history == ["hello", "do something"]
+
+    def test_command_input_modal_with_history(self):
+        from csm.widgets.modals import CommandInputModal
+        m = CommandInputModal("test", history=["cmd1", "cmd2"])
+        assert m._history == ["cmd1", "cmd2"]
+        assert m._history_idx == 2  # Past end (new input mode)
+
+    def test_command_input_modal_no_history(self):
+        from csm.widgets.modals import CommandInputModal
+        m = CommandInputModal("test")
+        assert m._history == []
+        assert m._history_idx == 0

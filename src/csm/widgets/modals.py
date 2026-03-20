@@ -249,19 +249,24 @@ class SearchInputModal(ModalScreen):
 class CommandInputModal(ModalScreen):
     """Modal for entering a command to send to a session.
 
+    Supports command history navigation with Up/Down arrow keys.
     Dismisses with the command string, or None on cancel/empty.
     """
 
     CSS = _modal_css("CommandInputModal", "$accent", 70)
 
-    def __init__(self, session_name: str) -> None:
+    def __init__(self, session_name: str, history: list[str] | None = None) -> None:
         super().__init__()
         self._session_name = session_name
+        self._history = list(history) if history else []
+        self._history_idx = len(self._history)  # Start past end (new input)
+        self._draft = ""  # Save current input when browsing history
 
     def compose(self) -> ComposeResult:
+        hint = f" ({len(self._history)} in history)" if self._history else ""
         with Vertical(id="dialog"):
-            yield Static(f"Send command to '{self._session_name}':")
-            yield Input(placeholder="Enter your command...", id="cmd_input")
+            yield Static(f"Send command to '{self._session_name}':{hint}")
+            yield Input(placeholder="Enter your command... (↑↓ history)", id="cmd_input")
             with Horizontal():
                 yield Button("Send", variant="primary", id="send_btn")
                 yield Button("Cancel", id="cancel_btn")
@@ -276,6 +281,61 @@ class CommandInputModal(ModalScreen):
     def on_input_submitted(self, event: Input.Submitted) -> None:
         cmd = event.value.strip()
         self.dismiss(cmd or None)
+
+    def key_up(self) -> None:
+        """Navigate to previous command in history."""
+        if not self._history:
+            return
+        inp = self.query_one("#cmd_input", Input)
+        if self._history_idx == len(self._history):
+            self._draft = inp.value  # Save current draft
+        if self._history_idx > 0:
+            self._history_idx -= 1
+            inp.value = self._history[self._history_idx]
+            inp.cursor_position = len(inp.value)
+
+    def key_down(self) -> None:
+        """Navigate to next command in history."""
+        if not self._history:
+            return
+        inp = self.query_one("#cmd_input", Input)
+        if self._history_idx < len(self._history):
+            self._history_idx += 1
+            if self._history_idx == len(self._history):
+                inp.value = self._draft  # Restore draft
+            else:
+                inp.value = self._history[self._history_idx]
+            inp.cursor_position = len(inp.value)
+
+    def key_escape(self) -> None:
+        self.dismiss(None)
+
+
+class RenameModal(ModalScreen):
+    """Modal for renaming a session."""
+
+    CSS = _modal_css("RenameModal", "$primary")
+
+    def __init__(self, current_name: str) -> None:
+        super().__init__()
+        self._current_name = current_name
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="dialog"):
+            yield Static("[bold]Rename Session[/bold]")
+            yield Input(value=self._current_name, placeholder="New name...", id="name_input")
+            with Horizontal():
+                yield Button("Rename", variant="primary", id="rename_btn")
+                yield Button("Cancel", id="cancel_btn")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "rename_btn":
+            self.dismiss(self.query_one("#name_input", Input).value.strip() or None)
+        else:
+            self.dismiss(None)
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        self.dismiss(event.value.strip() or None)
 
     def key_escape(self) -> None:
         self.dismiss(None)
