@@ -1,5 +1,7 @@
 """Claude Session Manager - Textual App entry point. T12"""
 import os
+from datetime import datetime
+from pathlib import Path
 
 try:
     import psutil
@@ -45,6 +47,7 @@ class CSMApp(App):
         Binding("x", "stop_session", "Stop"),
         Binding("d", "delete_session", "Delete"),
         Binding("r", "restart_session", "Restart"),
+        Binding("e", "export_log", "Export"),
         Binding("enter", "send_command", "Command"),
         Binding("q", "quit_app", "Quit"),
         Binding("b", "broadcast_command", "Broadcast"),
@@ -227,6 +230,32 @@ class CSMApp(App):
             self.query_one("#detail_panel", DetailPanel).show_placeholder()
             self._refresh_display()
             self.notify("Session deleted")
+
+    def action_export_log(self) -> None:
+        """Export selected session's output to a file."""
+        if not self._selected_session_id:
+            self.notify("No session selected", severity="warning")
+            return
+        session = self._session_manager.get_session(self._selected_session_id)
+        if not session:
+            return
+        buf = self._session_manager.buffer_store.get(self._selected_session_id)
+        if not buf:
+            self.notify("No output to export", severity="warning")
+            return
+
+        lines = buf.get_lines()
+        if not lines:
+            self.notify("Output buffer is empty", severity="warning")
+            return
+
+        export_dir = Path.home() / ".csm" / "exports"
+        export_dir.mkdir(parents=True, exist_ok=True)
+        name = session.config.name or os.path.basename(session.config.cwd) or "session"
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filepath = export_dir / f"{name}_{timestamp}.log"
+        filepath.write_text("\n".join(lines), encoding="utf-8")
+        self.notify(f"Exported to {filepath}")
 
     def action_restart_session(self) -> None:
         self._do_restart_session()

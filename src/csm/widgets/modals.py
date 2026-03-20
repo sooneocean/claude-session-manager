@@ -300,6 +300,7 @@ class HelpModal(ModalScreen):
   [bold]X[/bold]     Stop selected session
   [bold]D[/bold]     Delete DONE/DEAD session from list
   [bold]R[/bold]     Restart selected session
+  [bold]E[/bold]     Export session output to file
   [bold]B[/bold]     Broadcast command to all WAIT sessions
   [bold]/[/bold]     Filter by status (cycle: All/RUN/WAIT/DEAD/DONE)
   [bold]S[/bold]     Sort (cycle: None/Cost/Status/Stage)
