@@ -52,7 +52,7 @@ class SessionList(DataTable):
         self._all_sessions: list[SessionState] = []
 
     def on_mount(self) -> None:
-        self.add_columns("#", "Name", "Status", "Stage", "Cost($)", "Tokens", "Activity")
+        self.add_columns("#", "Name", "Status", "Stage", "Cost($)", "Tokens", "Uptime")
         self.cursor_type = "row"
 
     @staticmethod
@@ -71,17 +71,21 @@ class SessionList(DataTable):
         return f"{_fmt(tokens_in)}/{_fmt(tokens_out)}"
 
     @staticmethod
-    def _format_activity(dt: datetime) -> str:
-        """Format last activity as relative time (e.g. '2m ago')."""
-        delta = datetime.now() - dt
+    def _format_uptime(started_at: datetime, status: SessionStatus) -> str:
+        """Format elapsed time since session started (e.g. '2h 15m')."""
+        if status in (SessionStatus.DONE, SessionStatus.DEAD):
+            return "--"
+        delta = datetime.now() - started_at
         secs = max(0, int(delta.total_seconds()))
         if secs < 60:
-            return f"{secs}s ago"
+            return f"{secs}s"
         elif secs < 3600:
-            return f"{secs // 60}m ago"
+            return f"{secs // 60}m {secs % 60}s"
         elif secs < 86400:
-            return f"{secs // 3600}h ago"
-        return f"{secs // 86400}d ago"
+            h, rem = divmod(secs, 3600)
+            return f"{h}h {rem // 60}m"
+        d, rem = divmod(secs, 86400)
+        return f"{d}d {rem // 3600}h"
 
     def _build_row(self, idx: int, s: SessionState) -> tuple:
         """Build a row tuple for a session."""
@@ -93,7 +97,7 @@ class SessionList(DataTable):
             s.sop_stage or "--",
             f"{s.cost_usd:.2f}",
             self._format_tokens(s.tokens_in, s.tokens_out),
-            self._format_activity(s.last_activity),
+            self._format_uptime(s.started_at, s.status),
         )
 
     def update_sessions(self, sessions: list[SessionState]) -> None:
@@ -136,7 +140,7 @@ class SessionList(DataTable):
             for i, s in enumerate(sorted_sessions):
                 row_key = s.session_id
                 row = self._build_row(i + 1, s)
-                columns = ["#", "Name", "Status", "Stage", "Cost($)", "Tokens", "Activity"]
+                columns = ["#", "Name", "Status", "Stage", "Cost($)", "Tokens", "Uptime"]
                 try:
                     for col, val in zip(columns, row):
                         self.update_cell(row_key, col, val)

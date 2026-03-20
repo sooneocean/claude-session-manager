@@ -69,6 +69,7 @@ class CSMApp(App):
         Binding("s", "sort_sessions", "Sort"),
         Binding("h", "show_help", "Help"),
         Binding("i", "show_stats", "Stats"),
+        *[Binding(str(k), f"jump_to_session({k})", f"Session {k}", show=False) for k in range(1, 10)],
     ]
 
     def compose(self) -> ComposeResult:
@@ -564,6 +565,21 @@ class CSMApp(App):
         """Show dashboard statistics overlay."""
         sessions = self._session_manager.get_sessions()
         self.push_screen(StatsPanel(sessions))
+
+    def action_jump_to_session(self, index: int) -> None:
+        """Jump to session by number (1-9)."""
+        session_list = self.query_one("#session_list", SessionList)
+        if index <= session_list.row_count:
+            session_list.move_cursor(row=index - 1)
+            # Trigger selection
+            try:
+                row_key = list(session_list.rows.keys())[index - 1]
+                session_id = str(row_key.value)
+                self.on_session_list_session_selected(
+                    SessionList.SessionSelected(session_id)
+                )
+            except (IndexError, KeyError):
+                pass
 
     def action_show_help(self) -> None:
         self.push_screen(HelpModal())
