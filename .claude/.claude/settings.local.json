@@ -18,10 +18,7 @@
       "Bash(mkdir *)",
       "Bash(jq *)",
       "Bash(curl *)",
-      "mcp__sequential-thinking__sequentialthinking",
-      "Bash(pip install:*)",
-      "Bash(gh auth:*)",
-      "Bash(gh repo:*)"
+      "mcp__sequential-thinking__sequentialthinking"
     ],
     "deny": []
   },

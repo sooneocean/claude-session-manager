@@ -1,7 +1,7 @@
 # Codex Repo Operator — Adapter
 
 > **Source of Truth**：`.claude/` 目錄。本檔只定義 Codex 引擎的適配層。
-> 完整 SOP 規則：`.claude/references/sop-rules-detail.md`
+> 完整 SOP 規則：`.claude/references/sop-rules.md`
 > 能力索引：`.claude/manifest.json`
 
 ## 溝通原則

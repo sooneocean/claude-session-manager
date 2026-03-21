@@ -123,6 +123,12 @@ class CSMApp(App):
             buffer_capacity=self._config.output_buffer_capacity,
         )
         self._dispatcher = CommandDispatcher(self._session_manager)
+        # Start REST API for web frontend (Session Orchestrator)
+        try:
+            from csm.api import start_api_server
+            self._api_thread = start_api_server(self._session_manager, port=3100)
+        except Exception:
+            pass  # API is optional, don't break TUI
         self._selected_session_id: str | None = None
         self._budget_warned: set[str] = set()  # session_ids already warned
         self._restart_counts: dict[str, int] = {}  # auto-restart counters
