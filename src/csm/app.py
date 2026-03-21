@@ -26,6 +26,7 @@ from csm.core.persistence import (
     save_sessions, load_sessions,
     save_session_logs, load_session_logs, delete_session_logs,
     cleanup_orphan_logs, export_backup, import_backup,
+    save_view_state, load_view_state,
 )
 from csm.models.session import SessionConfig, SessionStatus
 from csm.widgets.session_list import SessionList, SortKey
@@ -93,6 +94,8 @@ class CSMApp(App):
         Binding("ctrl+i", "import_backup", "Import", show=False),
         Binding("ctrl+s", "schedule_command", "Schedule", show=False),
         Binding("g", "session_info", "Info", show=False),
+        Binding("o", "cycle_color", "Color", show=False),
+        Binding("exclamation_mark", "resend_last", "Resend", show=False),
         Binding("F", "toggle_focus", "Focus", show=False),
         Binding("left_square_bracket", "shrink_list", "List-", show=False),
         Binding("right_square_bracket", "grow_list", "List+", show=False),
@@ -133,8 +136,32 @@ class CSMApp(App):
         # Auto-save timer
         if self._config.auto_save_interval > 0:
             self.set_interval(self._config.auto_save_interval, self._auto_save)
+        # Restore view state (filter/sort)
+        self._restore_view_state()
         # First-run welcome
         self._check_first_run()
+
+    def _restore_view_state(self) -> None:
+        """Restore filter/sort from previous session."""
+        from csm.models.session import SessionStatus
+        filter_val, sort_val = load_view_state()
+        session_list = self.query_one("#session_list", SessionList)
+        if filter_val:
+            try:
+                session_list._filter_status = SessionStatus(filter_val)
+            except ValueError:
+                pass
+        try:
+            session_list._sort_key = SortKey(sort_val)
+        except ValueError:
+            pass
+
+    def _save_view_state(self) -> None:
+        """Persist current filter/sort settings."""
+        session_list = self.query_one("#session_list", SessionList)
+        f = session_list._filter_status.value if session_list._filter_status else None
+        s = session_list._sort_key.value
+        save_view_state(f, s)
 
     def _check_first_run(self) -> None:
         """Show welcome screen if this is the first time running CSM."""
@@ -156,6 +183,9 @@ class CSMApp(App):
         """Load sessions saved from a previous CSM run."""
         saved = load_sessions()
         for state in saved:
+            # Sessions saved as RUN/STARTING have no backing process after restart
+            if state.status in (SessionStatus.RUN, SessionStatus.STARTING):
+                state.status = SessionStatus.DEAD
             self._session_manager._sessions[state.session_id] = state
             buf = self._session_manager._buffer_store.create(
                 state.session_id, self._config.output_buffer_capacity
@@ -266,6 +296,25 @@ class CSMApp(App):
         panel = self.query_one("#detail_panel", DetailPanel)
         if panel.is_paused:
             status_text += " [bold yellow]PAUSED[/bold yellow]"
+
+        # Selected session output stats
+        if self._selected_session_id:
+            sel = self._session_manager.get_session(self._selected_session_id)
+            if sel:
+                buf = self._session_manager.buffer_store.get(self._selected_session_id)
+                line_count = len(buf) if buf else 0
+                ago = int((datetime.now() - sel.last_activity).total_seconds())
+                if ago < 60:
+                    ago_str = f"{ago}s ago"
+                elif ago < 3600:
+                    ago_str = f"{ago // 60}m ago"
+                else:
+                    ago_str = f"{ago // 3600}h ago"
+                status_text += f" | {line_count} lines | {ago_str}"
+
+        # Multi-select count
+        if self._selected_ids:
+            status_text += f" | [bold]{len(self._selected_ids)} selected[/bold]"
 
         self.query_one("#status_bar", Static).update(status_text)
 
@@ -559,12 +608,14 @@ class CSMApp(App):
         current = session_list.cycle_filter()
         label = current.value if current else "All"
         self.notify(f"Filter: {label}")
+        self._save_view_state()
 
     def action_sort_sessions(self) -> None:
         """Cycle through sort keys."""
         session_list = self.query_one("#session_list", SessionList)
         current = session_list.cycle_sort()
         self.notify(f"Sort: {current.value}")
+        self._save_view_state()
 
     def action_broadcast_command(self) -> None:
         self._do_broadcast()
@@ -792,6 +843,47 @@ class CSMApp(App):
             return
         session.pinned = not session.pinned
         self.notify(f"Session {'pinned' if session.pinned else 'unpinned'}")
+        self._refresh_display()
+
+    def action_resend_last(self) -> None:
+        """Resend the last command to the selected session."""
+        self._do_resend_last()
+
+    @work
+    async def _do_resend_last(self) -> None:
+        if not self._selected_session_id:
+            return
+        session = self._session_manager.get_session(self._selected_session_id)
+        if not session or not session.command_history:
+            self.notify("No previous command to resend", severity="warning")
+            return
+        if session.status == SessionStatus.DEAD:
+            self.notify("Session is dead", severity="error")
+            return
+        last_cmd = session.command_history[-1]
+        try:
+            await self._dispatcher.enqueue(self._selected_session_id, last_cmd)
+            session.command_history.append(last_cmd)
+            self.notify(f"Resent: '{last_cmd[:40]}'")
+        except (QueueFullError, SessionDeadError) as e:
+            self.notify(str(e), severity="error")
+
+    _COLOR_CYCLE = ["", "red", "green", "blue", "yellow", "magenta", "cyan"]
+
+    def action_cycle_color(self) -> None:
+        """Cycle through color labels for the selected session."""
+        if not self._selected_session_id:
+            return
+        session = self._session_manager.get_session(self._selected_session_id)
+        if not session:
+            return
+        try:
+            idx = self._COLOR_CYCLE.index(session.color)
+        except ValueError:
+            idx = 0
+        session.color = self._COLOR_CYCLE[(idx + 1) % len(self._COLOR_CYCLE)]
+        label = session.color or "none"
+        self.notify(f"Color: {label}")
         self._refresh_display()
 
     def action_toggle_pause(self) -> None:

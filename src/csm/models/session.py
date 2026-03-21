@@ -43,6 +43,7 @@ class SessionState:
     command_history: list[str] = field(default_factory=list)  # Recent commands sent
     total_active_seconds: float = 0.0  # Accumulated RUN-state time
     pinned: bool = False  # Pin session to top of list
+    color: str = ""  # User-defined color label (e.g. "red", "green", "blue")
     _run_started: datetime | None = field(default=None, repr=False)  # Internal: when last RUN started
 
     @staticmethod

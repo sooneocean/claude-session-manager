@@ -94,9 +94,14 @@ class SessionList(DataTable):
         """Build a row tuple for a session."""
         display_name = s.config.name or os.path.basename(s.config.cwd) or s.config.cwd
         pin_marker = "* " if s.pinned else ""
+        name_str = f"{pin_marker}{display_name}"
+        if s.color:
+            name_text = Text(name_str, style=s.color)
+        else:
+            name_text = name_str
         return (
             str(idx),
-            f"{pin_marker}{display_name}",
+            name_text,
             self._format_status(s.status),
             s.sop_stage or "--",
             f"{s.cost_usd:.2f}",

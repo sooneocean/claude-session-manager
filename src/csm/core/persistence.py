@@ -35,6 +35,9 @@ def _serialize_session(state: SessionState) -> dict:
         "command_history": state.command_history[-50:],  # Keep last 50
         "total_active_seconds": state.total_active_seconds,
         "pinned": state.pinned,
+        "color": state.color,
+        "started_at": state.started_at.isoformat(),
+        "last_activity": state.last_activity.isoformat(),
     }
 
 
@@ -64,6 +67,19 @@ def _deserialize_session(data: dict) -> SessionState:
     state.command_history = data.get("command_history", [])
     state.total_active_seconds = data.get("total_active_seconds", 0.0)
     state.pinned = data.get("pinned", False)
+    state.color = data.get("color", "")
+    if data.get("started_at"):
+        try:
+            from datetime import datetime
+            state.started_at = datetime.fromisoformat(data["started_at"])
+        except (ValueError, TypeError):
+            pass
+    if data.get("last_activity"):
+        try:
+            from datetime import datetime
+            state.last_activity = datetime.fromisoformat(data["last_activity"])
+        except (ValueError, TypeError):
+            pass
     return state
 
 
@@ -71,11 +87,15 @@ def save_sessions(
     sessions: list[SessionState],
     path: Path = DEFAULT_SESSIONS_PATH,
 ) -> None:
-    """Save session states to a JSON file."""
+    """Save session states to a JSON file (atomic write via temp file)."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     data = [_serialize_session(s) for s in sessions]
-    path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    content = json.dumps(data, indent=2, ensure_ascii=False)
+    # Atomic write: write to temp file then rename
+    tmp_path = path.with_suffix(".tmp")
+    tmp_path.write_text(content, encoding="utf-8")
+    tmp_path.replace(path)
     logger.info("Saved %d sessions to %s", len(sessions), path)
 
 
@@ -169,6 +189,36 @@ def import_backup(filepath: Path) -> tuple[list[SessionState], dict[str, list[st
     sessions = [_deserialize_session(entry) for entry in data.get("sessions", [])]
     logs = data.get("logs", {})
     return sessions, logs
+
+
+def save_view_state(
+    filter_status: str | None,
+    sort_key: str,
+    path: Path | None = None,
+) -> None:
+    """Save current filter/sort state."""
+    if path is None:
+        path = Path.home() / ".csm" / "view_state.json"
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = {"filter_status": filter_status, "sort_key": sort_key}
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+
+def load_view_state(
+    path: Path | None = None,
+) -> tuple[str | None, str]:
+    """Load saved filter/sort state. Returns (filter_status, sort_key)."""
+    if path is None:
+        path = Path.home() / ".csm" / "view_state.json"
+    path = Path(path)
+    if not path.exists():
+        return None, "none"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data.get("filter_status"), data.get("sort_key", "none")
+    except (json.JSONDecodeError, ValueError):
+        return None, "none"
 
 
 def cleanup_orphan_logs(

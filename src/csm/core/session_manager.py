@@ -217,7 +217,9 @@ class SessionManager:
             state.session_id, total_tokens,
         )
         state.status = SessionStatus.RUN
+        state.track_run_start()
         result = await self._run_claude(state, "/compact")
+        state.track_run_end()
         if result is not None:
             state.status = SessionStatus.WAIT
             # Reset token counters after successful compact
@@ -232,6 +234,11 @@ class SessionManager:
         if not state:
             raise SessionNotFoundError(f"Session not found: {session_id}")
 
+        # Cancel background task if running
+        task = self._background_tasks.pop(session_id, None)
+        if task is not None and not task.done():
+            task.cancel()
+
         proc = self._running_processes.pop(session_id, None)
         if proc is not None and proc.returncode is None:
             proc.terminate()
@@ -241,6 +248,7 @@ class SessionManager:
                 proc.kill()
                 await proc.wait()
 
+        state.track_run_end()
         state.status = SessionStatus.DONE
 
 
@@ -256,6 +264,11 @@ class SessionManager:
 
     async def remove(self, session_id: str) -> None:
         """Remove a session completely (no DONE status update)."""
+        # Cancel background task if running
+        task = self._background_tasks.pop(session_id, None)
+        if task is not None and not task.done():
+            task.cancel()
+
         proc = self._running_processes.pop(session_id, None)
         if proc is not None and proc.returncode is None:
             proc.terminate()
