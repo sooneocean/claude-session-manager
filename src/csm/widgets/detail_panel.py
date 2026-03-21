@@ -31,7 +31,12 @@ class SessionHeader(Static):
         cost = f"${session.cost_usd:.2f}"
         model = session.config.model or "default"
         active = session.active_duration_str
-        text = f" [{style}]{status}[/{style}]  {name}  |  {model}  |  {tokens} tokens  |  {cost}  |  Active: {active}"
+        rate = session.cost_per_hour
+        rate_str = f"${rate:.2f}/hr" if rate > 0 else ""
+        text = f" [{style}]{status}[/{style}]  {name}  |  {model}  |  {tokens} tokens  |  {cost}"
+        if rate_str:
+            text += f" ({rate_str})"
+        text += f"  |  Active: {active}"
         if session.notes:
             text += f"  | [italic]{session.notes}[/italic]"
         self.update(text)

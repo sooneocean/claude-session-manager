@@ -511,6 +511,15 @@ class CommandPaletteModal(ModalScreen):
         ("show_stats", "I", "Dashboard Stats"),
         ("spawn_from_template", "P", "Spawn from Template"),
         ("save_as_template", "Ctrl+T", "Save as Template"),
+        ("toggle_pin", "*", "Pin/Unpin Session"),
+        ("toggle_select", "V", "Multi-Select"),
+        ("batch_operation", "Shift+V", "Batch Operation"),
+        ("schedule_command", "Ctrl+S", "Schedule Command"),
+        ("toggle_pause", "Space", "Pause/Resume Output"),
+        ("toggle_wrap", "W", "Toggle Word Wrap"),
+        ("export_backup", "Ctrl+E", "Export Backup"),
+        ("shrink_list", "[", "Shrink List Panel"),
+        ("grow_list", "]", "Grow List Panel"),
         ("stop_all", "Shift+X", "Stop All"),
         ("delete_all_done", "Shift+D", "Delete All Done"),
         ("show_help", "H", "Help"),
@@ -547,6 +556,79 @@ class CommandPaletteModal(ModalScreen):
         self.dismiss(None)
 
 
+class ScheduleCommandModal(ModalScreen):
+    """Modal for scheduling a delayed command."""
+
+    CSS = _modal_css("ScheduleCommandModal", "$accent", 60)
+
+    def __init__(self, session_name: str) -> None:
+        super().__init__()
+        self._session_name = session_name
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="dialog"):
+            yield Static(f"[bold]Schedule Command[/bold] for '{self._session_name}'")
+            yield Static("Command:")
+            yield Input(placeholder="Enter command...", id="cmd_input")
+            yield Static("Delay (seconds):")
+            yield Input(value="60", placeholder="seconds", id="delay_input")
+            with Horizontal():
+                yield Button("Schedule", variant="primary", id="schedule_btn")
+                yield Button("Cancel", id="cancel_btn")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "schedule_btn":
+            cmd = self.query_one("#cmd_input", Input).value.strip()
+            delay_str = self.query_one("#delay_input", Input).value.strip()
+            if not cmd:
+                self.notify("Command required", severity="error")
+                return
+            try:
+                delay = max(1, int(delay_str))
+            except ValueError:
+                self.notify("Invalid delay", severity="error")
+                return
+            self.dismiss((cmd, delay))
+        else:
+            self.dismiss(None)
+
+    def key_escape(self) -> None:
+        self.dismiss(None)
+
+
+class BatchOperationModal(ModalScreen):
+    """Modal for selecting a batch operation on multiple sessions."""
+
+    CSS = _modal_css("BatchOperationModal", "$warning", 50)
+
+    def __init__(self, count: int) -> None:
+        super().__init__()
+        self._count = count
+
+    def compose(self) -> ComposeResult:
+        ops = [
+            ("stop", "Stop All Selected"),
+            ("delete", "Delete All Selected"),
+            ("tag", "Tag All Selected"),
+        ]
+        with Vertical(id="dialog"):
+            yield Static(f"[bold]Batch Operation[/bold] ({self._count} sessions selected)")
+            yield Select([(label, op_id) for op_id, label in ops], prompt="Choose operation...", id="op_select")
+            with Horizontal():
+                yield Button("Execute", variant="warning", id="exec_btn")
+                yield Button("Cancel", id="cancel_btn")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "exec_btn":
+            sel = self.query_one("#op_select", Select)
+            self.dismiss(sel.value if sel.value != Select.BLANK else None)
+        else:
+            self.dismiss(None)
+
+    def key_escape(self) -> None:
+        self.dismiss(None)
+
+
 class HelpModal(ModalScreen):
     """Help screen showing keyboard shortcuts and usage info."""
 
@@ -569,18 +651,28 @@ class HelpModal(ModalScreen):
   [bold]T[/bold]       Add tag              [bold]Shift+T[/bold] Filter by tag
   [bold]/[/bold]       Filter by status     [bold]S[/bold]       Sort sessions
   [bold]1-9[/bold]     Quick-switch         [bold]I[/bold]       Dashboard stats
+  [bold]*[/bold]       Pin/unpin session    [bold]V[/bold]       Multi-select
+  [bold]Shift+V[/bold] Batch operation
 
 [bold underline]Output & Tools[/bold underline]
 
   [bold]F[/bold]       Search output        [bold]E[/bold]       Export to file
   [bold]W[/bold]       Toggle word wrap     [bold]Space[/bold]   Pause/resume scroll
+  [bold][ ][/bold]     Resize panels        [bold]Ctrl+S[/bold]  Schedule command
   [bold]Ctrl+T[/bold]  Save as template     [bold]Ctrl+P[/bold]  Command palette
-  [bold]H[/bold]       This help            [bold]Q[/bold]       Quit (auto-saves)
+  [bold]Ctrl+E[/bold]  Export backup        [bold]H[/bold]       This help
+  [bold]Q[/bold]       Quit (auto-saves)
 
 [bold underline]Session States[/bold underline]
 
   [green]RUN[/green]   Claude is processing    [yellow]WAIT[/yellow]  Ready for commands
   [red]DEAD[/red]  Process crashed          [dim]DONE[/dim]  Stopped normally
+
+[bold underline]CLI Arguments[/bold underline]
+
+  csm --version       Show version
+  csm --config PATH   Custom config file
+  csm --no-restore    Start fresh
 """
 
     def compose(self) -> ComposeResult:

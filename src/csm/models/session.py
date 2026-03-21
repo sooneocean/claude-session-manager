@@ -42,6 +42,7 @@ class SessionState:
     tags: list[str] = field(default_factory=list)  # User-defined tags
     command_history: list[str] = field(default_factory=list)  # Recent commands sent
     total_active_seconds: float = 0.0  # Accumulated RUN-state time
+    pinned: bool = False  # Pin session to top of list
     _run_started: datetime | None = field(default=None, repr=False)  # Internal: when last RUN started
 
     @staticmethod
@@ -61,6 +62,16 @@ class SessionState:
             elapsed = (datetime.now() - self._run_started).total_seconds()
             self.total_active_seconds += max(0, elapsed)
             self._run_started = None
+
+    @property
+    def cost_per_hour(self) -> float:
+        """Calculate cost rate in $/hr based on active duration."""
+        total_secs = self.total_active_seconds
+        if self._run_started:
+            total_secs += max(0, (datetime.now() - self._run_started).total_seconds())
+        if total_secs < 60:  # Need at least 1 min of data
+            return 0.0
+        return (self.cost_usd / total_secs) * 3600
 
     @property
     def active_duration_str(self) -> str:

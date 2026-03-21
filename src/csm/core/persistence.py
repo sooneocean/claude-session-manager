@@ -34,6 +34,7 @@ def _serialize_session(state: SessionState) -> dict:
         "tags": state.tags,
         "command_history": state.command_history[-50:],  # Keep last 50
         "total_active_seconds": state.total_active_seconds,
+        "pinned": state.pinned,
     }
 
 
@@ -62,6 +63,7 @@ def _deserialize_session(data: dict) -> SessionState:
     state.tags = data.get("tags", [])
     state.command_history = data.get("command_history", [])
     state.total_active_seconds = data.get("total_active_seconds", 0.0)
+    state.pinned = data.get("pinned", False)
     return state
 
 
@@ -135,3 +137,59 @@ def delete_session_logs(
     """Remove a session's saved log file."""
     filepath = Path(logs_dir) / f"{session_id}.json"
     filepath.unlink(missing_ok=True)
+
+
+def export_backup(
+    sessions: list[SessionState],
+    buffer_store,
+    filepath: Path,
+) -> None:
+    """Export all sessions + logs to a single backup JSON file."""
+    backup = {
+        "version": 1,
+        "sessions": [_serialize_session(s) for s in sessions],
+        "logs": {},
+    }
+    for s in sessions:
+        buf = buffer_store.get(s.session_id)
+        if buf is not None:
+            backup["logs"][s.session_id] = buf.get_lines()
+    filepath = Path(filepath)
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    filepath.write_text(json.dumps(backup, indent=2, ensure_ascii=False), encoding="utf-8")
+    logger.info("Exported backup with %d sessions to %s", len(sessions), filepath)
+
+
+def import_backup(filepath: Path) -> tuple[list[SessionState], dict[str, list[str]]]:
+    """Import sessions + logs from a backup file.
+    Returns (sessions, {session_id: [lines]})."""
+    filepath = Path(filepath)
+    raw = filepath.read_text(encoding="utf-8")
+    data = json.loads(raw)
+    sessions = [_deserialize_session(entry) for entry in data.get("sessions", [])]
+    logs = data.get("logs", {})
+    return sessions, logs
+
+
+def cleanup_orphan_logs(
+    active_session_ids: set[str],
+    logs_dir: Path = DEFAULT_LOGS_DIR,
+    max_age_days: int = 7,
+) -> int:
+    """Remove log files that don't belong to active sessions and are older than max_age_days.
+    Returns number of files removed."""
+    logs_dir = Path(logs_dir)
+    if not logs_dir.exists():
+        return 0
+    import time
+    now = time.time()
+    removed = 0
+    for f in logs_dir.glob("*.json"):
+        session_id = f.stem
+        if session_id in active_session_ids:
+            continue
+        age_days = (now - f.stat().st_mtime) / 86400
+        if age_days > max_age_days:
+            f.unlink(missing_ok=True)
+            removed += 1
+    return removed

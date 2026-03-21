@@ -1,5 +1,6 @@
-"""Tests for v0.11-v0.33 features."""
+"""Tests for v0.11-v0.43 features."""
 import os
+import time
 import pytest
 from pathlib import Path
 from unittest.mock import AsyncMock, patch, MagicMock
@@ -9,6 +10,7 @@ from csm.core.session_manager import SessionManager
 from csm.core.persistence import (
     save_sessions, load_sessions,
     save_session_logs, load_session_logs, delete_session_logs,
+    cleanup_orphan_logs, export_backup, import_backup,
 )
 from csm.core.templates import save_template, load_templates, delete_template, list_template_names
 from csm.models.session import SessionConfig, SessionState, SessionStatus
@@ -402,3 +404,140 @@ class TestStatsPanelDuration:
         panel = StatsPanel([s])
         stats = panel._compute_stats()
         assert "Active Time" in stats
+
+
+# --- CLI version (v0.34) ---
+
+class TestCLIVersion:
+    def test_version_importable(self):
+        from csm import __version__
+        assert __version__ == "0.43.0"
+
+
+# --- Session pinning (v0.35) ---
+
+class TestSessionPinning:
+    def test_default_not_pinned(self):
+        s = SessionState.create(SessionConfig(cwd="/test"))
+        assert s.pinned is False
+
+    def test_pin_persists(self, tmp_path):
+        s = SessionState.create(SessionConfig(cwd="/test"))
+        s.pinned = True
+        s.status = SessionStatus.WAIT
+        path = tmp_path / "sessions.json"
+        save_sessions([s], path)
+        loaded = load_sessions(path)
+        assert loaded[0].pinned is True
+
+    def test_pinned_sessions_sorted_first(self):
+        sl = SessionList()
+        s1 = SessionState.create(SessionConfig(cwd="/a"))
+        s1.pinned = False
+        s2 = SessionState.create(SessionConfig(cwd="/b"))
+        s2.pinned = True
+        result = sl._apply_sort([s1, s2])
+        assert result[0].pinned is True
+
+
+# --- Log rotation (v0.37) ---
+
+class TestLogRotation:
+    def test_cleanup_orphan_logs(self, tmp_path):
+        logs_dir = tmp_path / "logs"
+        logs_dir.mkdir()
+        # Create an old orphan file
+        old_file = logs_dir / "old-id.json"
+        old_file.write_text("[]")
+        # Set mtime to 10 days ago
+        old_mtime = time.time() - (10 * 86400)
+        os.utime(old_file, (old_mtime, old_mtime))
+        # Create an active session file
+        active_file = logs_dir / "active-id.json"
+        active_file.write_text("[]")
+
+        removed = cleanup_orphan_logs({"active-id"}, logs_dir, max_age_days=7)
+        assert removed == 1
+        assert not old_file.exists()
+        assert active_file.exists()
+
+    def test_cleanup_keeps_recent_orphans(self, tmp_path):
+        logs_dir = tmp_path / "logs"
+        logs_dir.mkdir()
+        recent_file = logs_dir / "recent-id.json"
+        recent_file.write_text("[]")
+        removed = cleanup_orphan_logs(set(), logs_dir, max_age_days=7)
+        assert removed == 0
+        assert recent_file.exists()
+
+
+# --- Backup/Restore (v0.39) ---
+
+class TestBackupRestore:
+    def test_export_and_import_backup(self, tmp_path):
+        from csm.core.session_manager import OutputBufferStore
+        s = SessionState.create(SessionConfig(cwd="/test", name="test-session"))
+        s.status = SessionStatus.WAIT
+        s.cost_usd = 1.5
+        buf_store = OutputBufferStore()
+        buf = buf_store.create(s.session_id)
+        buf.append("line 1")
+        buf.append("line 2")
+
+        filepath = tmp_path / "backup.json"
+        export_backup([s], buf_store, filepath)
+        assert filepath.exists()
+
+        sessions, logs = import_backup(filepath)
+        assert len(sessions) == 1
+        assert sessions[0].config.name == "test-session"
+        assert s.session_id in logs
+        assert logs[s.session_id] == ["line 1", "line 2"]
+
+
+# --- Cost rate (v0.40) ---
+
+class TestCostRate:
+    def test_cost_per_hour_no_data(self):
+        s = SessionState.create(SessionConfig(cwd="/test"))
+        assert s.cost_per_hour == 0.0
+
+    def test_cost_per_hour_with_data(self):
+        s = SessionState.create(SessionConfig(cwd="/test"))
+        s.cost_usd = 1.0
+        s.total_active_seconds = 3600  # 1 hour
+        assert s.cost_per_hour == pytest.approx(1.0, abs=0.01)
+
+    def test_cost_per_hour_half_hour(self):
+        s = SessionState.create(SessionConfig(cwd="/test"))
+        s.cost_usd = 2.0
+        s.total_active_seconds = 1800  # 30 min
+        assert s.cost_per_hour == pytest.approx(4.0, abs=0.01)
+
+
+# --- Batch operation modal (v0.38) ---
+
+class TestBatchModals:
+    def test_batch_operation_modal(self):
+        from csm.widgets.modals import BatchOperationModal
+        m = BatchOperationModal(5)
+        assert m._count == 5
+
+    def test_schedule_command_modal(self):
+        from csm.widgets.modals import ScheduleCommandModal
+        m = ScheduleCommandModal("test-session")
+        assert m._session_name == "test-session"
+
+
+# --- Command palette updated (v0.43) ---
+
+class TestCommandPaletteV43:
+    def test_palette_includes_new_actions(self):
+        from csm.widgets.modals import CommandPaletteModal
+        m = CommandPaletteModal()
+        action_ids = [a[0] for a in m.ACTIONS]
+        assert "toggle_pin" in action_ids
+        assert "batch_operation" in action_ids
+        assert "schedule_command" in action_ids
+        assert "export_backup" in action_ids
+        assert "shrink_list" in action_ids

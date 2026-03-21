@@ -25,6 +25,7 @@ from csm.core.command_dispatcher import CommandDispatcher, QueueFullError, Sessi
 from csm.core.persistence import (
     save_sessions, load_sessions,
     save_session_logs, load_session_logs, delete_session_logs,
+    cleanup_orphan_logs, export_backup, import_backup,
 )
 from csm.models.session import SessionConfig, SessionStatus
 from csm.widgets.session_list import SessionList, SortKey
@@ -46,6 +47,8 @@ from csm.widgets.modals import (
     TemplateSelectModal,
     SaveTemplateModal,
     CommandPaletteModal,
+    BatchOperationModal,
+    ScheduleCommandModal,
 )
 
 
@@ -81,6 +84,13 @@ class CSMApp(App):
         Binding("ctrl+p", "command_palette", "Palette", show=False),
         Binding("w", "toggle_wrap", "Wrap", show=False),
         Binding("space", "toggle_pause", "Pause", show=False),
+        Binding("asterisk", "toggle_pin", "Pin", show=False),
+        Binding("v", "toggle_select", "Select", show=False),
+        Binding("V", "batch_operation", "Batch Op", show=False),
+        Binding("ctrl+e", "export_backup", "Backup", show=False),
+        Binding("ctrl+s", "schedule_command", "Schedule", show=False),
+        Binding("left_square_bracket", "shrink_list", "List-", show=False),
+        Binding("right_square_bracket", "grow_list", "List+", show=False),
         *[Binding(str(k), f"jump_to_session({k})", f"Session {k}", show=False) for k in range(1, 10)],
     ]
 
@@ -93,7 +103,12 @@ class CSMApp(App):
         yield Footer()
 
     def on_mount(self) -> None:
-        self._config = load_config()
+        config_path = getattr(self, '_cli_config_path', None)
+        if config_path:
+            from pathlib import Path
+            self._config = load_config(Path(config_path))
+        else:
+            self._config = load_config()
         self._session_manager = SessionManager(
             session_limit=self._config.session_limit,
             auto_compact_threshold=self._config.auto_compact_threshold,
@@ -104,8 +119,11 @@ class CSMApp(App):
         self._budget_warned: set[str] = set()  # session_ids already warned
         self._restart_counts: dict[str, int] = {}  # auto-restart counters
         self._restarting: set[str] = set()  # sessions currently being auto-restarted
+        self._last_status: dict[str, SessionStatus] = {}  # track status changes for notifications
+        self._selected_ids: set[str] = set()  # multi-select set
         # Restore sessions from previous run
-        self._restore_sessions()
+        if not getattr(self, '_cli_no_restore', False):
+            self._restore_sessions()
         self.set_interval(self._config.refresh_interval, self._refresh_display)
         # Auto-save timer
         if self._config.auto_save_interval > 0:
@@ -158,6 +176,9 @@ class CSMApp(App):
             buf = self._session_manager.buffer_store.get(s.session_id)
             if buf is not None and len(buf) > 0:
                 save_session_logs(s.session_id, buf.get_lines())
+        # Periodic log cleanup (orphan files older than 7 days)
+        active_ids = {s.session_id for s in sessions}
+        cleanup_orphan_logs(active_ids)
 
     def _refresh_display(self) -> None:
         """Refresh the session list, status bar, and detail panel (incremental)."""
@@ -191,6 +212,19 @@ class CSMApp(App):
             status_text += f" | CPU: {cpu:.0f}% RAM: {ram:.0f}%"
             if cpu > 90 or ram > 80:
                 status_text += " [bold red]HIGH LOAD[/bold red]"
+
+        # Status change notifications
+        for s in sessions:
+            prev = self._last_status.get(s.session_id)
+            if prev is not None and prev != s.status:
+                name = s.config.name or os.path.basename(s.config.cwd)
+                if s.status == SessionStatus.DEAD:
+                    self.notify(f"'{name}' crashed (DEAD)", severity="error")
+                elif s.status == SessionStatus.WAIT and prev == SessionStatus.RUN:
+                    self.notify(f"'{name}' ready (WAIT)")
+                elif s.status == SessionStatus.DONE:
+                    self.notify(f"'{name}' completed (DONE)")
+            self._last_status[s.session_id] = s.status
 
         # Budget alerts — notify once when session reaches 80% of max_budget
         for s in sessions:
@@ -346,6 +380,7 @@ class CSMApp(App):
             self._budget_warned.discard(sid)
             self._restart_counts.pop(sid, None)
             self._restarting.discard(sid)
+            self._last_status.pop(sid, None)
             self._selected_session_id = None
             self.query_one("#detail_panel", DetailPanel).show_placeholder()
             self._refresh_display()
@@ -598,6 +633,7 @@ class CSMApp(App):
             self._budget_warned.discard(s.session_id)
             self._restart_counts.pop(s.session_id, None)
             self._restarting.discard(s.session_id)
+            self._last_status.pop(s.session_id, None)
         if self._selected_session_id and not self._session_manager.get_session(self._selected_session_id):
             self._selected_session_id = None
             self.query_one("#detail_panel", DetailPanel).show_placeholder()
@@ -681,6 +717,78 @@ class CSMApp(App):
         })
         self.notify(f"Template '{name}' saved")
 
+    def action_toggle_select(self) -> None:
+        """Toggle multi-select for the current session."""
+        if not self._selected_session_id:
+            return
+        sid = self._selected_session_id
+        if sid in self._selected_ids:
+            self._selected_ids.discard(sid)
+            self.notify(f"Deselected ({len(self._selected_ids)} selected)")
+        else:
+            self._selected_ids.add(sid)
+            self.notify(f"Selected ({len(self._selected_ids)} selected)")
+
+    def action_batch_operation(self) -> None:
+        """Open batch operation modal for multi-selected sessions."""
+        self._do_batch_operation()
+
+    @work
+    async def _do_batch_operation(self) -> None:
+        if not self._selected_ids:
+            self.notify("No sessions selected. Press V to select.", severity="warning")
+            return
+        op = await self.push_screen_wait(BatchOperationModal(len(self._selected_ids)))
+        if not op:
+            self._selected_ids.clear()
+            return
+        count = 0
+        if op == "stop":
+            for sid in list(self._selected_ids):
+                session = self._session_manager.get_session(sid)
+                if session and session.status not in (SessionStatus.DONE, SessionStatus.DEAD):
+                    self._dispatcher.cleanup_session(sid)
+                    await self._session_manager.stop(sid)
+                    count += 1
+            self.notify(f"Stopped {count} sessions")
+        elif op == "delete":
+            for sid in list(self._selected_ids):
+                session = self._session_manager.get_session(sid)
+                if session and session.status in (SessionStatus.DONE, SessionStatus.DEAD):
+                    self._dispatcher.cleanup_session(sid)
+                    await self._session_manager.remove(sid)
+                    delete_session_logs(sid)
+                    self._budget_warned.discard(sid)
+                    self._restart_counts.pop(sid, None)
+                    self._last_status.pop(sid, None)
+                    count += 1
+            self.notify(f"Deleted {count} sessions")
+        elif op == "tag":
+            tag_result = await self.push_screen_wait(TagInputModal([]))
+            if tag_result is not None:
+                for sid in self._selected_ids:
+                    session = self._session_manager.get_session(sid)
+                    if session:
+                        session.tags = list(set(session.tags + tag_result))
+                        count += 1
+                self.notify(f"Tagged {count} sessions")
+        self._selected_ids.clear()
+        if self._selected_session_id and not self._session_manager.get_session(self._selected_session_id):
+            self._selected_session_id = None
+            self.query_one("#detail_panel", DetailPanel).show_placeholder()
+        self._refresh_display()
+
+    def action_toggle_pin(self) -> None:
+        """Toggle pin/unpin for the selected session."""
+        if not self._selected_session_id:
+            return
+        session = self._session_manager.get_session(self._selected_session_id)
+        if not session:
+            return
+        session.pinned = not session.pinned
+        self.notify(f"Session {'pinned' if session.pinned else 'unpinned'}")
+        self._refresh_display()
+
     def action_toggle_pause(self) -> None:
         """Toggle pause/resume output auto-scrolling."""
         panel = self.query_one("#detail_panel", DetailPanel)
@@ -705,6 +813,71 @@ class CSMApp(App):
                 await self.run_action(action_id)
             except Exception:
                 self.notify(f"Action '{action_id}' failed", severity="error")
+
+    def action_schedule_command(self) -> None:
+        """Schedule a command to be sent after a delay."""
+        self._do_schedule_command()
+
+    @work
+    async def _do_schedule_command(self) -> None:
+        import asyncio
+        if not self._selected_session_id:
+            self.notify("No session selected", severity="warning")
+            return
+        session = self._session_manager.get_session(self._selected_session_id)
+        if not session:
+            return
+        name = session.config.name or os.path.basename(session.config.cwd)
+        result = await self.push_screen_wait(ScheduleCommandModal(name))
+        if not result:
+            return
+        cmd, delay = result
+        sid = self._selected_session_id
+        self.notify(f"Scheduled '{cmd}' in {delay}s")
+
+        await asyncio.sleep(delay)
+        try:
+            await self._dispatcher.enqueue(sid, cmd)
+            session = self._session_manager.get_session(sid)
+            if session:
+                session.command_history.append(cmd)
+            self.notify(f"Scheduled command sent: '{cmd}'")
+        except Exception as e:
+            self.notify(f"Scheduled command failed: {e}", severity="error")
+
+    def action_shrink_list(self) -> None:
+        """Shrink the session list panel width."""
+        sl = self.query_one("#session_list", SessionList)
+        dp = self.query_one("#detail_panel", DetailPanel)
+        # Parse current width percentage, decrease by 10
+        current = getattr(self, '_list_width_pct', 60)
+        new_pct = max(20, current - 10)
+        self._list_width_pct = new_pct
+        sl.styles.width = f"{new_pct}%"
+        dp.styles.width = f"{100 - new_pct}%"
+
+    def action_grow_list(self) -> None:
+        """Grow the session list panel width."""
+        sl = self.query_one("#session_list", SessionList)
+        dp = self.query_one("#detail_panel", DetailPanel)
+        current = getattr(self, '_list_width_pct', 60)
+        new_pct = min(80, current + 10)
+        self._list_width_pct = new_pct
+        sl.styles.width = f"{new_pct}%"
+        dp.styles.width = f"{100 - new_pct}%"
+
+    def action_export_backup(self) -> None:
+        """Export all sessions and logs to a backup file."""
+        sessions = self._session_manager.get_sessions()
+        if not sessions:
+            self.notify("No sessions to export", severity="warning")
+            return
+        backup_dir = Path.home() / ".csm" / "backups"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filepath = backup_dir / f"csm_backup_{timestamp}.json"
+        export_backup(sessions, self._session_manager.buffer_store, filepath)
+        self.notify(f"Backup saved: {filepath}")
 
     def action_show_help(self) -> None:
         self.push_screen(HelpModal())
@@ -742,7 +915,23 @@ class CSMApp(App):
 
 
 def main() -> None:
+    import argparse
+    from csm import __version__
+
+    parser = argparse.ArgumentParser(
+        prog="csm",
+        description="Claude Session Manager - TUI for managing multiple Claude Code sessions",
+    )
+    parser.add_argument("--version", action="version", version=f"csm {__version__}")
+    parser.add_argument("--config", type=str, default=None,
+                        help="Path to config file (default: ~/.csm/config.json)")
+    parser.add_argument("--no-restore", action="store_true",
+                        help="Start fresh without restoring saved sessions")
+    args = parser.parse_args()
+
     app = CSMApp()
+    app._cli_config_path = args.config
+    app._cli_no_restore = args.no_restore
     app.run()
 
 

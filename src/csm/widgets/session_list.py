@@ -90,9 +90,10 @@ class SessionList(DataTable):
     def _build_row(self, idx: int, s: SessionState) -> tuple:
         """Build a row tuple for a session."""
         display_name = s.config.name or os.path.basename(s.config.cwd) or s.config.cwd
+        pin_marker = "* " if s.pinned else ""
         return (
             str(idx),
-            display_name,
+            f"{pin_marker}{display_name}",
             self._format_status(s.status),
             s.sop_stage or "--",
             f"{s.cost_usd:.2f}",
@@ -189,12 +190,17 @@ class SessionList(DataTable):
 
     def _apply_sort(self, sessions: list[SessionState]) -> list[SessionState]:
         if self._sort_key == SortKey.COST:
-            return sorted(sessions, key=lambda s: s.cost_usd, reverse=True)
+            result = sorted(sessions, key=lambda s: s.cost_usd, reverse=True)
         elif self._sort_key == SortKey.STATUS:
-            return sorted(sessions, key=lambda s: self.STATUS_ORDER.get(s.status, 99))
+            result = sorted(sessions, key=lambda s: self.STATUS_ORDER.get(s.status, 99))
         elif self._sort_key == SortKey.STAGE:
-            return sorted(sessions, key=lambda s: s.sop_stage or "Z")
-        return sessions
+            result = sorted(sessions, key=lambda s: s.sop_stage or "Z")
+        else:
+            result = list(sessions)
+        # Pinned sessions always first
+        pinned = [s for s in result if s.pinned]
+        unpinned = [s for s in result if not s.pinned]
+        return pinned + unpinned
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         session_id = str(event.row_key.value) if event.row_key else None
