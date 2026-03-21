@@ -1,11 +1,20 @@
 """Tests for CSMApp main application. T12"""
 import pytest
+from pathlib import Path
+from unittest.mock import patch
 from textual.widgets import Header, Footer, Static
 
 from csm.app import CSMApp
 from csm.widgets.session_list import SessionList
 from csm.widgets.detail_panel import DetailPanel
 from csm.widgets.modals import NewSessionModal, ConfirmStopModal
+
+
+@pytest.fixture(autouse=True)
+def ensure_csm_dir(tmp_path):
+    """Ensure ~/.csm/ exists so WelcomeScreen doesn't block tests."""
+    csm_dir = Path.home() / ".csm"
+    csm_dir.mkdir(exist_ok=True)
 
 
 # ---------------------------------------------------------------------------
