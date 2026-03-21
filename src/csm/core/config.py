@@ -22,6 +22,9 @@ class UserConfig:
     auto_restart_dead: bool = False
     auto_restart_max: int = 3
     auto_save_interval: float = 60.0  # seconds between auto-saves (0 = disabled)
+    notify_on_dead: bool = True
+    notify_on_wait: bool = True
+    notify_on_done: bool = True
 
 
 def load_config(path: Path = DEFAULT_CONFIG_PATH) -> UserConfig:
@@ -43,6 +46,9 @@ def load_config(path: Path = DEFAULT_CONFIG_PATH) -> UserConfig:
             auto_restart_dead=data.get("auto_restart_dead", False),
             auto_restart_max=max(0, data.get("auto_restart_max", 3)),
             auto_save_interval=max(0, data.get("auto_save_interval", 60.0)),
+            notify_on_dead=data.get("notify_on_dead", True),
+            notify_on_wait=data.get("notify_on_wait", True),
+            notify_on_done=data.get("notify_on_done", True),
         )
     except (json.JSONDecodeError, ValueError) as e:
         logger.warning("Failed to load config from %s: %s", path, e)

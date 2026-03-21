@@ -16,7 +16,7 @@ from csm.core.templates import save_template, load_templates, delete_template, l
 from csm.models.session import SessionConfig, SessionState, SessionStatus
 from csm.widgets.detail_panel import DetailPanel
 from csm.widgets.stats_panel import StatsPanel
-from csm.widgets.session_list import SessionList
+from csm.widgets.session_list import SessionList, SortKey
 
 
 # --- Config tests (v0.17) ---
@@ -541,3 +541,119 @@ class TestCommandPaletteV43:
         assert "schedule_command" in action_ids
         assert "export_backup" in action_ids
         assert "shrink_list" in action_ids
+
+
+# --- Session info modal (v0.44) ---
+
+class TestSessionInfoModal:
+    def test_session_info_modal_basic(self):
+        from csm.widgets.modals import SessionInfoModal
+        s = SessionState.create(SessionConfig(cwd="/test", name="my-session", model="opus"))
+        s.status = SessionStatus.WAIT
+        s.cost_usd = 1.5
+        s.tokens_in = 1000
+        s.tokens_out = 500
+        s.tags = ["frontend"]
+        s.notes = "important"
+        s.command_history = ["hello", "do work"]
+        m = SessionInfoModal(s, output_lines=42)
+        assert m._session == s
+        assert m._output_lines == 42
+
+    def test_session_info_modal_pinned(self):
+        from csm.widgets.modals import SessionInfoModal
+        s = SessionState.create(SessionConfig(cwd="/test"))
+        s.pinned = True
+        m = SessionInfoModal(s)
+        assert m._session.pinned is True
+
+
+# --- Extended sort keys (v0.46) ---
+
+class TestExtendedSort:
+    def test_sort_by_name(self):
+        sl = SessionList()
+        sl._sort_key = SortKey.NAME
+        s1 = SessionState.create(SessionConfig(cwd="/zebra"))
+        s2 = SessionState.create(SessionConfig(cwd="/apple"))
+        result = sl._apply_sort([s1, s2])
+        assert "apple" in (result[0].config.cwd)
+
+    def test_sort_by_active(self):
+        from csm.widgets.session_list import SortKey
+        sl = SessionList()
+        sl._sort_key = SortKey.ACTIVE
+        s1 = SessionState.create(SessionConfig(cwd="/a"))
+        s1.total_active_seconds = 100
+        s2 = SessionState.create(SessionConfig(cwd="/b"))
+        s2.total_active_seconds = 500
+        result = sl._apply_sort([s1, s2])
+        assert result[0].total_active_seconds == 500
+
+    def test_sort_by_rate(self):
+        from csm.widgets.session_list import SortKey
+        sl = SessionList()
+        sl._sort_key = SortKey.RATE
+        s1 = SessionState.create(SessionConfig(cwd="/a"))
+        s1.cost_usd = 1.0
+        s1.total_active_seconds = 3600
+        s2 = SessionState.create(SessionConfig(cwd="/b"))
+        s2.cost_usd = 2.0
+        s2.total_active_seconds = 1800  # Higher rate
+        result = sl._apply_sort([s1, s2])
+        assert result[0].cost_per_hour > result[1].cost_per_hour
+
+    def test_sort_cycle_includes_new_keys(self):
+        sl = SessionList()
+        # Cycle through all sort keys
+        seen = set()
+        for _ in range(10):
+            key = sl.cycle_sort()
+            seen.add(key)
+        assert SortKey.NAME in seen
+        assert SortKey.ACTIVE in seen
+        assert SortKey.RATE in seen
+
+
+# --- Import backup modal (v0.47) ---
+
+class TestImportBackupModal:
+    def test_import_modal_with_files(self):
+        from csm.widgets.modals import ImportBackupModal
+        m = ImportBackupModal(["backup1.json", "backup2.json"])
+        assert m._backup_files == ["backup1.json", "backup2.json"]
+
+    def test_import_modal_no_files(self):
+        from csm.widgets.modals import ImportBackupModal
+        m = ImportBackupModal([])
+        assert m._backup_files == []
+
+
+# --- Notification config (v0.48) ---
+
+class TestNotificationConfig:
+    def test_default_notification_settings(self):
+        config = UserConfig()
+        assert config.notify_on_dead is True
+        assert config.notify_on_wait is True
+        assert config.notify_on_done is True
+
+    def test_notification_settings_from_config(self, tmp_path):
+        path = tmp_path / "config.json"
+        path.write_text('{"notify_on_wait": false, "notify_on_done": false}')
+        config = load_config(path)
+        assert config.notify_on_dead is True
+        assert config.notify_on_wait is False
+        assert config.notify_on_done is False
+
+
+# --- Command palette v0.48 ---
+
+class TestCommandPaletteV48:
+    def test_palette_includes_v48_actions(self):
+        from csm.widgets.modals import CommandPaletteModal
+        m = CommandPaletteModal()
+        action_ids = [a[0] for a in m.ACTIONS]
+        assert "session_info" in action_ids
+        assert "toggle_focus" in action_ids
+        assert "import_backup" in action_ids

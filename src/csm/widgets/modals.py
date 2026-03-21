@@ -5,7 +5,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Static, Input, Button, Select
 from textual.containers import Vertical, Horizontal
 
-from csm.models.session import SessionConfig
+from csm.models.session import SessionConfig, SessionState, SessionStatus
 
 
 def _modal_css(name: str, border_color: str = "$primary", width: int = 60,
@@ -517,7 +517,10 @@ class CommandPaletteModal(ModalScreen):
         ("schedule_command", "Ctrl+S", "Schedule Command"),
         ("toggle_pause", "Space", "Pause/Resume Output"),
         ("toggle_wrap", "W", "Toggle Word Wrap"),
+        ("session_info", "G", "Session Info"),
+        ("toggle_focus", "Shift+F", "Focus Mode"),
         ("export_backup", "Ctrl+E", "Export Backup"),
+        ("import_backup", "Ctrl+I", "Import Backup"),
         ("shrink_list", "[", "Shrink List Panel"),
         ("grow_list", "]", "Grow List Panel"),
         ("stop_all", "Shift+X", "Stop All"),
@@ -629,6 +632,105 @@ class BatchOperationModal(ModalScreen):
         self.dismiss(None)
 
 
+class ImportBackupModal(ModalScreen):
+    """Modal for importing a backup file."""
+
+    CSS = _modal_css("ImportBackupModal", "$accent", 65)
+
+    def __init__(self, backup_files: list[str]) -> None:
+        super().__init__()
+        self._backup_files = backup_files
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="dialog"):
+            yield Static("[bold]Import Backup[/bold]")
+            if self._backup_files:
+                options = [(f, f) for f in self._backup_files]
+                yield Select(options, prompt="Choose backup...", id="backup_select")
+                with Horizontal():
+                    yield Button("Import", variant="primary", id="import_btn")
+                    yield Button("Cancel", id="cancel_btn")
+            else:
+                yield Static("[dim]No backup files found in ~/.csm/backups/[/dim]")
+                yield Static("[dim]Use Ctrl+E to create a backup first.[/dim]")
+                yield Button("Close", id="cancel_btn")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "import_btn":
+            sel = self.query_one("#backup_select", Select)
+            self.dismiss(sel.value if sel.value != Select.BLANK else None)
+        else:
+            self.dismiss(None)
+
+    def key_escape(self) -> None:
+        self.dismiss(None)
+
+
+class SessionInfoModal(ModalScreen):
+    """Detailed session information overlay."""
+
+    CSS = _modal_css("SessionInfoModal", "$primary", 70, "max-height: 85%;")
+
+    def __init__(self, session: SessionState, output_lines: int = 0) -> None:
+        super().__init__()
+        self._session = session
+        self._output_lines = output_lines
+
+    def compose(self) -> ComposeResult:
+        s = self._session
+        c = s.config
+        status_colors = {
+            SessionStatus.RUN: "green", SessionStatus.WAIT: "yellow",
+            SessionStatus.DEAD: "red", SessionStatus.DONE: "dim",
+            SessionStatus.STARTING: "yellow",
+        }
+        color = status_colors.get(s.status, "white")
+
+        info = [
+            f"[bold]Session Info[/bold]",
+            "",
+            f"[bold]Status:[/bold]  [{color}]{s.status.value}[/{color}]"
+            + ("  [bold yellow]PINNED[/bold yellow]" if s.pinned else ""),
+            f"[bold]Name:[/bold]    {c.name or '(unnamed)'}",
+            f"[bold]CWD:[/bold]     {c.cwd}",
+            f"[bold]Model:[/bold]   {c.model or 'default'}",
+            f"[bold]Mode:[/bold]    {c.permission_mode}",
+            f"[bold]Budget:[/bold]  {'$' + str(c.max_budget_usd) if c.max_budget_usd else 'unlimited'}",
+            "",
+            f"[bold]Session ID:[/bold]  {s.session_id[:12]}...",
+            f"[bold]Claude ID:[/bold]   {s.claude_session_id or 'N/A'}",
+            f"[bold]Resume ID:[/bold]   {c.resume_id or 'N/A'}",
+            "",
+            f"[bold underline]Metrics[/bold underline]",
+            f"  Cost:       ${s.cost_usd:.4f}",
+            f"  Rate:       ${s.cost_per_hour:.2f}/hr" if s.cost_per_hour > 0 else "  Rate:       N/A",
+            f"  Tokens In:  {s.tokens_in:,}",
+            f"  Tokens Out: {s.tokens_out:,}",
+            f"  Active:     {s.active_duration_str}",
+            f"  Output:     {self._output_lines} lines buffered",
+            f"  SOP Stage:  {s.sop_stage or 'N/A'}",
+        ]
+
+        if s.tags:
+            info.extend(["", f"[bold]Tags:[/bold] {', '.join(s.tags)}"])
+        if s.notes:
+            info.extend(["", f"[bold]Notes:[/bold] {s.notes}"])
+        if s.command_history:
+            info.extend(["", f"[bold underline]Recent Commands[/bold underline] (last 5)"])
+            for cmd in s.command_history[-5:]:
+                info.append(f"  > {cmd[:60]}")
+
+        with Vertical(id="dialog"):
+            yield Static("\n".join(info))
+            yield Button("Close", variant="primary", id="close_btn")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        self.dismiss(None)
+
+    def key_escape(self) -> None:
+        self.dismiss(None)
+
+
 class HelpModal(ModalScreen):
     """Help screen showing keyboard shortcuts and usage info."""
 
@@ -657,11 +759,12 @@ class HelpModal(ModalScreen):
 [bold underline]Output & Tools[/bold underline]
 
   [bold]F[/bold]       Search output        [bold]E[/bold]       Export to file
+  [bold]G[/bold]       Session info         [bold]Shift+F[/bold] Focus mode
   [bold]W[/bold]       Toggle word wrap     [bold]Space[/bold]   Pause/resume scroll
   [bold][ ][/bold]     Resize panels        [bold]Ctrl+S[/bold]  Schedule command
   [bold]Ctrl+T[/bold]  Save as template     [bold]Ctrl+P[/bold]  Command palette
-  [bold]Ctrl+E[/bold]  Export backup        [bold]H[/bold]       This help
-  [bold]Q[/bold]       Quit (auto-saves)
+  [bold]Ctrl+E[/bold]  Export backup        [bold]Ctrl+I[/bold]  Import backup
+  [bold]H[/bold]       This help            [bold]Q[/bold]       Quit (auto-saves)
 
 [bold underline]Session States[/bold underline]
 

@@ -16,6 +16,9 @@ class SortKey(Enum):
     COST = "cost"
     STAGE = "stage"
     STATUS = "status"
+    NAME = "name"
+    ACTIVE = "active"
+    RATE = "rate"
 
 
 class SessionList(DataTable):
@@ -170,8 +173,9 @@ class SessionList(DataTable):
         self.update_sessions(self._all_sessions)
 
     def cycle_sort(self) -> SortKey:
-        """Cycle through sort options: NONE → COST → STATUS → STAGE → NONE."""
-        cycle = [SortKey.NONE, SortKey.COST, SortKey.STATUS, SortKey.STAGE]
+        """Cycle through sort options."""
+        cycle = [SortKey.NONE, SortKey.COST, SortKey.STATUS, SortKey.STAGE,
+                 SortKey.NAME, SortKey.ACTIVE, SortKey.RATE]
         try:
             idx = cycle.index(self._sort_key)
         except ValueError:
@@ -195,6 +199,12 @@ class SessionList(DataTable):
             result = sorted(sessions, key=lambda s: self.STATUS_ORDER.get(s.status, 99))
         elif self._sort_key == SortKey.STAGE:
             result = sorted(sessions, key=lambda s: s.sop_stage or "Z")
+        elif self._sort_key == SortKey.NAME:
+            result = sorted(sessions, key=lambda s: (s.config.name or os.path.basename(s.config.cwd) or "").lower())
+        elif self._sort_key == SortKey.ACTIVE:
+            result = sorted(sessions, key=lambda s: s.total_active_seconds, reverse=True)
+        elif self._sort_key == SortKey.RATE:
+            result = sorted(sessions, key=lambda s: s.cost_per_hour, reverse=True)
         else:
             result = list(sessions)
         # Pinned sessions always first

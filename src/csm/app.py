@@ -49,6 +49,8 @@ from csm.widgets.modals import (
     CommandPaletteModal,
     BatchOperationModal,
     ScheduleCommandModal,
+    SessionInfoModal,
+    ImportBackupModal,
 )
 
 
@@ -88,7 +90,10 @@ class CSMApp(App):
         Binding("v", "toggle_select", "Select", show=False),
         Binding("V", "batch_operation", "Batch Op", show=False),
         Binding("ctrl+e", "export_backup", "Backup", show=False),
+        Binding("ctrl+i", "import_backup", "Import", show=False),
         Binding("ctrl+s", "schedule_command", "Schedule", show=False),
+        Binding("g", "session_info", "Info", show=False),
+        Binding("F", "toggle_focus", "Focus", show=False),
         Binding("left_square_bracket", "shrink_list", "List-", show=False),
         Binding("right_square_bracket", "grow_list", "List+", show=False),
         *[Binding(str(k), f"jump_to_session({k})", f"Session {k}", show=False) for k in range(1, 10)],
@@ -213,16 +218,16 @@ class CSMApp(App):
             if cpu > 90 or ram > 80:
                 status_text += " [bold red]HIGH LOAD[/bold red]"
 
-        # Status change notifications
+        # Status change notifications (configurable)
         for s in sessions:
             prev = self._last_status.get(s.session_id)
             if prev is not None and prev != s.status:
                 name = s.config.name or os.path.basename(s.config.cwd)
-                if s.status == SessionStatus.DEAD:
+                if s.status == SessionStatus.DEAD and self._config.notify_on_dead:
                     self.notify(f"'{name}' crashed (DEAD)", severity="error")
-                elif s.status == SessionStatus.WAIT and prev == SessionStatus.RUN:
+                elif s.status == SessionStatus.WAIT and prev == SessionStatus.RUN and self._config.notify_on_wait:
                     self.notify(f"'{name}' ready (WAIT)")
-                elif s.status == SessionStatus.DONE:
+                elif s.status == SessionStatus.DONE and self._config.notify_on_done:
                     self.notify(f"'{name}' completed (DONE)")
             self._last_status[s.session_id] = s.status
 
@@ -814,6 +819,33 @@ class CSMApp(App):
             except Exception:
                 self.notify(f"Action '{action_id}' failed", severity="error")
 
+    def action_toggle_focus(self) -> None:
+        """Toggle focus mode — hide session list, full-screen detail panel."""
+        sl = self.query_one("#session_list", SessionList)
+        dp = self.query_one("#detail_panel", DetailPanel)
+        if sl.display:
+            sl.display = False
+            dp.styles.width = "100%"
+            self.notify("Focus mode ON (Shift+F to exit)")
+        else:
+            sl.display = True
+            pct = getattr(self, '_list_width_pct', 60)
+            sl.styles.width = f"{pct}%"
+            dp.styles.width = f"{100 - pct}%"
+            self.notify("Focus mode OFF")
+
+    def action_session_info(self) -> None:
+        """Show detailed session info overlay."""
+        if not self._selected_session_id:
+            self.notify("No session selected", severity="warning")
+            return
+        session = self._session_manager.get_session(self._selected_session_id)
+        if not session:
+            return
+        buf = self._session_manager.buffer_store.get(self._selected_session_id)
+        line_count = len(buf) if buf else 0
+        self.push_screen(SessionInfoModal(session, line_count))
+
     def action_schedule_command(self) -> None:
         """Schedule a command to be sent after a delay."""
         self._do_schedule_command()
@@ -878,6 +910,48 @@ class CSMApp(App):
         filepath = backup_dir / f"csm_backup_{timestamp}.json"
         export_backup(sessions, self._session_manager.buffer_store, filepath)
         self.notify(f"Backup saved: {filepath}")
+
+    def action_import_backup(self) -> None:
+        """Import sessions from a backup file."""
+        self._do_import_backup()
+
+    @work
+    async def _do_import_backup(self) -> None:
+        backup_dir = Path.home() / ".csm" / "backups"
+        if not backup_dir.exists():
+            self.notify("No backup directory found", severity="warning")
+            return
+        files = sorted(
+            [f.name for f in backup_dir.glob("csm_backup_*.json")],
+            reverse=True,
+        )
+        selected = await self.push_screen_wait(ImportBackupModal(files))
+        if not selected:
+            return
+        filepath = backup_dir / selected
+        try:
+            sessions, logs = import_backup(filepath)
+        except Exception as e:
+            self.notify(f"Import failed: {e}", severity="error")
+            return
+        imported = 0
+        for state in sessions:
+            # Skip if session already exists
+            if self._session_manager.get_session(state.session_id):
+                continue
+            self._session_manager._sessions[state.session_id] = state
+            buf = self._session_manager._buffer_store.create(
+                state.session_id, self._config.output_buffer_capacity
+            )
+            for line in logs.get(state.session_id, []):
+                buf.append(line)
+            self._session_manager._cost_aggregator.update(
+                state.session_id, state.tokens_in, state.tokens_out, state.cost_usd
+            )
+            self._dispatcher.register_session(state.session_id)
+            imported += 1
+        self._refresh_display()
+        self.notify(f"Imported {imported} sessions from backup")
 
     def action_show_help(self) -> None:
         self.push_screen(HelpModal())
